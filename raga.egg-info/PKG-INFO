@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: raga
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.11
+Requires-Dist: chonkie>=1.7.0
+Requires-Dist: lancedb>=0.38.0
+Requires-Dist: ollama>=0.6.2
+Requires-Dist: pydantic>=2.13.5
+Requires-Dist: pymupdf>=1.28.2
+Requires-Dist: pytesseract>=0.3.13
+Requires-Dist: sentence-transformers>=6.0.1
+Requires-Dist: textual>=8.2.8
+Requires-Dist: tree-sitter>=0.26.0
+Requires-Dist: tree-sitter-languages>=1.10.2
+Requires-Dist: typer>=0.27.2
+Requires-Dist: watchdog>=6.0.0

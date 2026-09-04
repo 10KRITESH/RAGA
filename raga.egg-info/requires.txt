@@ -1,0 +1,12 @@
+chonkie>=1.7.0
+lancedb>=0.38.0
+ollama>=0.6.2
+pydantic>=2.13.5
+pymupdf>=1.28.2
+pytesseract>=0.3.13
+sentence-transformers>=6.0.1
+textual>=8.2.8
+tree-sitter>=0.26.0
+tree-sitter-languages>=1.10.2
+typer>=0.27.2
+watchdog>=6.0.0
