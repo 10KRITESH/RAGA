@@ -67,10 +67,18 @@ async def process_event(event: SourceEvent, conn):
 
     rows = []
     for i, chunk in enumerate(chunks):
-        # Prefix chunk with file metadata so embeddings reflect file type/name,
-        # which helps queries like "what are the images about" retrieve image chunks
-        # instead of semantically closer text from PDFs.
+        # Prefix chunk with file metadata so embeddings reflect file type/name.
         embed_text = f"[File: {path.name} | Type: {extractor.source_type}]\n{chunk}"
+
+        # For the first chunk (document header), also prepend likely metadata questions
+        # so the embedding covers queries like "who are the authors" / "what is the title"
+        # even though those words don't appear in the header text itself.
+        if i == 0:
+            embed_text = (
+                f"What is the title? Who are the authors? What is this document about?\n"
+                + embed_text
+            )
+
         rows.append({
             "chunk_id": str(uuid.uuid4()),
             "file_path": str(path),

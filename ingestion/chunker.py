@@ -1,8 +1,8 @@
 # Native sliding window chunker (trial) — splits on word boundaries
 
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-    """Splits text into overlapping chunks using word-boundary slicing."""
 
+def chunk_text(text: str, chunk_size: int = 250, overlap: int = 40) -> list[str]:
+    """Splits text into overlapping chunks using word-boundary slicing."""
     if not text.strip():
         return []
 

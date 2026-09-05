@@ -1,5 +1,6 @@
 """
-Core Engine — public functions called by the CLI/TUI.
+Core Engine — public functions called by the CLI/TUI (see API
+Specification Section 1).
 """
 from core.retriever import retrieve
 from core.generator import generate_answer
@@ -7,10 +8,11 @@ from core.generator import generate_answer
 
 def ask(query: str) -> dict:
     """
-    Runs the full retrieve -> generate flow for a one-shot question.
-    Returns a dict with 'text' (the answer) and 'sources' (file paths).
+    Runs the full retrieve -> generate flow for a one-shot
+    question. Returns a dict with 'text' (the answer) and 'sources'
+    (file paths).
     """
-    chunks = retrieve(query)
+    chunks = retrieve(query, top_k=7)
     answer_text = generate_answer(query, chunks)
 
     sources = []
