@@ -3,7 +3,7 @@ Global RAGA settings and constants.
 """
 from pathlib import Path
 WATCHED_DIRS: list[str] = [
-    str(Path.home() / "Documents")
+    str(Path.home())
     ]
 
 EXCLUSIONS: list[str] = [
@@ -11,13 +11,15 @@ EXCLUSIONS: list[str] = [
     "**/.gnupg/**",
     "**/.mozilla/**",
     "**/.cache/**",
-    "**/.local/share/raga/**",   # don't index RAGA's own database
+    "**/.local/share/raga/**",
     "**/node_modules/**",
     "**/.git/**",
     "**/__pycache__/**",
     "**/.venv/**",
     "**/venv/**",
-    "**/Documents/NMIMS/projects/RAGA/**",  # don't index RAGA's own source code
+    "**/dist/**",
+    "**/build/**",
+    "**/Documents/NMIMS/projects/RAGA/**",
 ]
 
 DATA_DIR = Path.home() / ".local" / "share" / "raga"

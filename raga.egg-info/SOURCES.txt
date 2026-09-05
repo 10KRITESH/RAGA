@@ -4,8 +4,18 @@ pyproject.toml
 cli/__init__.py
 cli/main.py
 core/__init__.py
+core/engine.py
+core/generator.py
+core/reindex_engine.py
+core/retriever.py
+core/status_engine.py
 extractors/__init__.py
+extractors/base.py
+extractors/text.py
 ingestion/__init__.py
+ingestion/chunker.py
+ingestion/embedder.py
+ingestion/pipeline.py
 raga.egg-info/PKG-INFO
 raga.egg-info/SOURCES.txt
 raga.egg-info/dependency_links.txt
@@ -13,4 +23,8 @@ raga.egg-info/entry_points.txt
 raga.egg-info/requires.txt
 raga.egg-info/top_level.txt
 storage/__init__.py
+storage/metadata_db.py
+storage/vector_store.py
 watchers/__init__.py
+watchers/events.py
+watchers/filesystem.py

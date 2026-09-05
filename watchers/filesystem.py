@@ -7,9 +7,21 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchers.events import SourceEvent, EventType
 
 def _matches_exclusion(path: str, exclusions: list[str]) -> bool:
-    # check if path matches any exclusion glob pattern.
+    # check if path matches any exclusion glob pattern or folder name.
     p = Path(path)
-    return any(p.match(pattern) for pattern in exclusions)
+    parts = p.parts
+    path_str = str(p)
+    for pattern in exclusions:
+        name = pattern.strip("*/")
+        if not name:
+            continue
+        if "/" in name:
+            if name in path_str:
+                return True
+        else:
+            if name in parts:
+                return True
+    return False
 
 class _Handler(FileSystemEventHandler):
     # Internal class that watchdog calls directly on filesystem events
