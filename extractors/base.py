@@ -8,6 +8,8 @@ from pathlib import Path
 
 
 class Extractor(ABC):
+    source_type: str = "text"  # subclasses override this
+
     @abstractmethod
     def can_handle(self, path: Path) -> bool:
         """Return True if this extractor knows how to read this file type."""

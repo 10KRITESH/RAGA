@@ -41,13 +41,13 @@ no querying yet, just prove the write path works.
 ## Milestone 2 — Query Path (CLI `ask`)
 **Goal:** `raga ask "..."` returns a real, sourced answer.
 
-- [ ] Implement `Retriever` — embed query, similarity search against LanceDB
-- [ ] Implement `Answer Generator` — build prompt from retrieved chunks,
+- [/] Implement `Retriever` — embed query, similarity search against LanceDB
+- [/] Implement `Answer Generator` — build prompt from retrieved chunks,
       call `OllamaProvider.generate()`
-- [ ] Wire `ask()` Core Engine function per API Spec Section 1
-- [ ] Implement `raga ask` CLI command, rendering answer + sources (per
+- [/] Wire `ask()` Core Engine function per API Spec Section 1
+- [/] Implement `raga ask` CLI command, rendering answer + sources (per
       UI/UX Section 2)
-- [ ] Manual test: ask a question about a file indexed in Milestone 1,
+- [/] Manual test: ask a question about a file indexed in Milestone 1,
       confirm correct file is cited
 
 **Checkpoint:** this is the first fully working slice — daemon watches,
@@ -56,15 +56,15 @@ CLI answers with sources. Everything after this is depth and polish.
 ## Milestone 3 — Operability
 **Goal:** trust and control over what's indexed.
 
-- [ ] Implement `status()` Core Engine function + `daemon_log` table writes
-- [ ] Implement `raga status` CLI command
-- [ ] Implement `reindex()` Core Engine function + `raga reindex` CLI command
+- [/] Implement `status()` Core Engine function + `daemon_log` table writes
+- [/] Implement `raga status` CLI command
+- [/] Implement `reindex()` Core Engine function + `raga reindex` CLI command
       with progress output
-- [ ] Implement `configure_watch()` / `configure_exclusion()` + persist to
+- [/] Implement `configure_watch()` / `configure_exclusion()` + persist to
       SQLite tables
-- [ ] Package daemon as a systemd user service (mirroring the existing
+- [/] Package daemon as a systemd user service (mirroring the existing
       wallpaper-rotate service pattern)
-- [ ] Manual test: kill and restart the daemon, confirm no data loss and no
+- [/] Manual test: kill and restart the daemon, confirm no data loss and no
       full re-index required (NFR-3)
 
 ## Milestone 4 — Content Coverage Expansion
