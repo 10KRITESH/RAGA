@@ -3,8 +3,7 @@ Global RAGA settings and constants.
 """
 from pathlib import Path
 WATCHED_DIRS: list[str] = [
-    str(Path.home() / "Documents"),
-    str(Path.home() / "Projects")
+    str(Path.home() / "Documents")
     ]
 
 EXCLUSIONS: list[str] = [
