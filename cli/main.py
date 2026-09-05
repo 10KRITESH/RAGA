@@ -9,17 +9,29 @@ app = typer.Typer(
 @app.command()
 def status():
     """Show daemon health and index status."""
-    typer.echo("not implemented yet")
+    from core.status_engine import get_status
 
-@app.command()
-def ask(query: str):
-    """Ask a Question."""
-    typer.echo("not implemented yet")
+    s = get_status()
+    typer.echo(f"Watched dirs:   {', '.join(s['watched_dirs'])}")
+    typer.echo(f"Files indexed:  {s['files_indexed']}")
+    typer.echo(f"Files failed:   {s['files_failed']}")
+    typer.echo(f"Last indexed:   {s['last_indexed_at'] or 'never'}")
+
 
 @app.command()
 def reindex(path: str):
     """Force re-indexing of a directory."""
-    typer.echo("not implemented yet")
+    import asyncio
+    from core.reindex_engine import reindex_directory
+
+    typer.echo(f"Indexing {path} ...")
+    result = asyncio.run(reindex_directory(path))
+
+    if "error" in result:
+        typer.echo(f"Error: {result['error']}")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Done — {result['processed']}/{result['total_files']} files processed.")
 
 @app.command()
 def chat():

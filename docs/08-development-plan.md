@@ -13,29 +13,29 @@ and requirements themselves — to shift once real implementation starts.
 **Goal:** a working, empty skeleton — nothing functional yet, but the shape
 of the project exists and runs.
 
-- [ ] Initialize `pyproject.toml` with `uv`, set up folder structure
+- [/] Initialize `pyproject.toml` with `uv`, set up folder structure
       (`watchers/`, `extractors/`, `ingestion/`, `storage/`, `core/`, `cli/`)
-- [ ] Set up `config.py` — watched dirs, exclusions, model names (from
+- [/] Set up `config.py` — watched dirs, exclusions, model names (from
       Database Design's `watched_dirs`/`exclusions` tables, initially as a
       simple config file before DB-backed config exists)
-- [ ] Basic `typer` app with a stub `raga status` command that just prints
+- [/] Basic `typer` app with a stub `raga status` command that just prints
       "not implemented yet"
-- [ ] Confirm Ollama is reachable locally (basic health check script)
+- [/] Confirm Ollama is reachable locally (basic health check script)
 
 ## Milestone 1 — Ingestion Pipeline (Read Path)
 **Goal:** a file dropped into a watched folder gets embedded and stored —
 no querying yet, just prove the write path works.
 
-- [ ] Implement `FilesystemWatcher` using `watchdog`, emitting normalized
+- [/] Implement `FilesystemWatcher` using `watchdog`, emitting normalized
       `SourceEvent` objects
-- [ ] Implement `TextExtractor` (plain text/code — simplest case first)
-- [ ] Implement chunking (start naive/sliding-window; swap to Chonkie once
+- [/] Implement `TextExtractor` (plain text/code — simplest case first)
+- [/] Implement chunking (start naive/sliding-window; swap to Chonkie once
       pipeline is proven end-to-end)
-- [ ] Implement `OllamaProvider.embed()`
-- [ ] Set up SQLite `files` table + basic insert/update/delete logic
+- [/] Implement `OllamaProvider.embed()`
+- [] Set up SQLite `files` table + basic insert/update/delete logic
       (content-hash dedup per FR-4)
-- [ ] Set up LanceDB `chunks` table + insert logic
-- [ ] Manual test: create/edit/delete a `.txt` file, confirm rows appear/
+- [/] Set up LanceDB `chunks` table + insert logic
+- [/] Manual test: create/edit/delete a `.txt` file, confirm rows appear/
       disappear correctly in both stores
 
 ## Milestone 2 — Query Path (CLI `ask`)

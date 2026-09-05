@@ -7,10 +7,17 @@ WATCHED_DIRS: list[str] = [
     ]
 
 EXCLUSIONS: list[str] = [
+    "**/.ssh/**",
+    "**/.gnupg/**",
+    "**/.mozilla/**",
+    "**/.cache/**",
+    "**/.local/share/raga/**",   # don't index RAGA's own database
     "**/node_modules/**",
     "**/.git/**",
     "**/__pycache__/**",
     "**/.venv/**",
+    "**/venv/**",
+    "**/Documents/NMIMS/projects/RAGA/**",  # don't index RAGA's own source code
 ]
 
 DATA_DIR = Path.home() / ".local" / "share" / "raga"
