@@ -1,10 +1,11 @@
-"""RAGA CLI TYPER COMMANDS AND ENTRYPOINT"""
-import typer 
+# RAGA CLI
+import typer
 
 app = typer.Typer(
-    name = "raga",
-    help = "Ask the system anything"
+    name="raga",
+    help="Ask the system anything",
 )
+
 
 @app.command()
 def status():
@@ -16,6 +17,20 @@ def status():
     typer.echo(f"Files indexed:  {s['files_indexed']}")
     typer.echo(f"Files failed:   {s['files_failed']}")
     typer.echo(f"Last indexed:   {s['last_indexed_at'] or 'never'}")
+
+
+@app.command()
+def ask(query: str):
+    """Ask a one-shot question."""
+    from core.engine import ask as core_ask
+
+    result = core_ask(query)
+    typer.echo(result["text"])
+
+    if result["sources"]:
+        typer.echo("\nSources:")
+        for path in result["sources"]:
+            typer.echo(f"  {path}")
 
 
 @app.command()
@@ -33,11 +48,12 @@ def reindex(path: str):
 
     typer.echo(f"Done — {result['processed']}/{result['total_files']} files processed.")
 
+
 @app.command()
 def chat():
     """Launch TUI"""
     typer.echo("not implemented yet")
 
+
 if __name__ == "__main__":
     app()
-    
