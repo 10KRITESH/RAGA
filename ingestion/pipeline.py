@@ -67,12 +67,16 @@ async def process_event(event: SourceEvent, conn):
 
     rows = []
     for i, chunk in enumerate(chunks):
+        # Prefix chunk with file metadata so embeddings reflect file type/name,
+        # which helps queries like "what are the images about" retrieve image chunks
+        # instead of semantically closer text from PDFs.
+        embed_text = f"[File: {path.name} | Type: {extractor.source_type}]\n{chunk}"
         rows.append({
             "chunk_id": str(uuid.uuid4()),
             "file_path": str(path),
-            "chunk_text": chunk,
+            "chunk_text": chunk,        # store clean text for display / generation
             "chunk_index": i,
-            "vector": embed(chunk),
+            "vector": embed(embed_text), # embed with metadata prefix for better retrieval
             "source_type": extractor.source_type,
         })
 
