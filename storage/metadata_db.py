@@ -3,12 +3,15 @@ SQLite metadata store — tracks indexed files (see Database Design doc,
 `files` table).
 """
 import sqlite3
+import datetime
 from pathlib import Path
 from config import SQLITE_PATH
 
-def get_connection():
+
+def get_connection() -> sqlite3.Connection:
     SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(SQLITE_PATH)
+    conn = sqlite3.connect(str(SQLITE_PATH), timeout=30.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,10 +23,11 @@ def get_connection():
             indexed_at TEXT
         )
     """)
+    conn.commit()
     return conn
 
-def upsert_file(conn, path: str, content_hash: str, source_type: str, chunk_count: int):
-    import datetime
+
+def upsert_file(conn: sqlite3.Connection, path: str, content_hash: str, source_type: str, chunk_count: int):
     conn.execute("""
         INSERT INTO files (path, content_hash, source_type, chunk_count, status, indexed_at)
         VALUES (?, ?, ?, ?, 'indexed', ?)
@@ -35,23 +39,24 @@ def upsert_file(conn, path: str, content_hash: str, source_type: str, chunk_coun
     """, (path, content_hash, source_type, chunk_count, datetime.datetime.now().isoformat()))
     conn.commit()
 
+
 def get_file(conn: sqlite3.Connection, path: str) -> sqlite3.Row | None:
     conn.row_factory = sqlite3.Row
     cursor = conn.execute("SELECT * FROM files WHERE path = ?", (path,))
     return cursor.fetchone()
 
+
 def delete_file(conn: sqlite3.Connection, path: str):
     conn.execute("DELETE FROM files WHERE path = ?", (path,))
     conn.commit()
 
-def count_by_status(conn, status: str) ->  int:
+
+def count_by_status(conn: sqlite3.Connection, status: str) -> int:
     cursor = conn.execute("SELECT COUNT(*) FROM files WHERE status = ?", (status,))
     return cursor.fetchone()[0]
 
-def most_recent_indexed_at(conn):
-    cursor = conn.execute("""
-        SELECT MAX(rowid) FROM files
-        """)
-    return cursor.fetchone()[0]
 
-    
+def most_recent_indexed_at(conn: sqlite3.Connection):
+    cursor = conn.execute("SELECT MAX(indexed_at) FROM files")
+    res = cursor.fetchone()
+    return res[0] if res else None

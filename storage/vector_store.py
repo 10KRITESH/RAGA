@@ -15,6 +15,7 @@ _SCHEMA = pa.schema([
     pa.field("source_type", pa.string()),
 ])
 
+
 def get_table():
     if "chunks" in _db.table_names():
         table = _db.open_table("chunks")
@@ -22,19 +23,24 @@ def get_table():
         table = _db.create_table("chunks", schema=_SCHEMA)
     return table
 
-def _rebuild_fts(table):
-    """Rebuild the FTS index — called after any add/delete."""
+
+def rebuild_fts():
+    """Explicitly rebuild the full-text search index once after batch operations."""
     try:
+        table = get_table()
         table.create_fts_index("chunk_text", replace=True)
     except Exception:
         pass
 
+
 def add_chunks(rows: list[dict]):
+    """Adds chunk rows to LanceDB without expensive per-file FTS index rebuilds."""
+    if not rows:
+        return
     table = get_table()
     table.add(rows)
-    _rebuild_fts(table)
+
 
 def delete_chunks_for_file(file_path: str):
     table = get_table()
     table.delete(f"file_path = '{file_path}'")
-    _rebuild_fts(table)

@@ -83,8 +83,8 @@ actually useful day-to-day.
 
 - [ ] Integrate `bge-reranker-base` into the retrieval path (post-retrieval,
       pre-generation)
-- [ ] Add hybrid search (vector + full-text via LanceDB) to `Retriever`
-- [ ] Tune chunk size/overlap based on manual quality testing
+- [/] dd hybrid search (vector + full-text via LanceDB) to `Retriever`
+- [/] Tune chunk size/overlap based on manual quality testing
 - [ ] Route code-context queries to `qwen2.5-coder`, general queries to
       `llama3.2:3b` (per System Design's provider routing)
 

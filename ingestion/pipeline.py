@@ -1,6 +1,6 @@
 """
 Ingestion pipeline — consumes SourceEvents from the watcher queue and
-runs them through: extract -> chunk -> embed -> store.
+runs them through: extract -> chunk -> embed (batched) -> store.
 """
 import asyncio
 import hashlib
@@ -11,11 +11,19 @@ from watchers.events import SourceEvent, EventType
 from extractors.text import TextExtractor
 from extractors.pdf import PDFExtractor
 from extractors.image import ImageOCRExtractor
+from extractors.media import MediaMetadataExtractor
+from extractors.office import OfficeExtractor
 from ingestion.chunker import chunk_text
-from ingestion.embedder import embed
+from ingestion.embedder import embed_batch
 from storage import metadata_db, vector_store
 
-EXTRACTORS = [TextExtractor(), PDFExtractor(), ImageOCRExtractor()]
+EXTRACTORS = [
+    TextExtractor(),
+    PDFExtractor(),
+    ImageOCRExtractor(),
+    OfficeExtractor(),
+    MediaMetadataExtractor(),
+]
 
 
 def _hash_content(text: str) -> str:
@@ -40,7 +48,6 @@ async def process_event(event: SourceEvent, conn):
 
     extractor = _pick_extractor(path)
     if extractor is None:
-        print(f"[skipped] {path} - unsupported file type")
         return
 
     try:
@@ -49,11 +56,13 @@ async def process_event(event: SourceEvent, conn):
         print(f"[failed] {path} - extraction error: {e}")
         return
 
+    if not text.strip():
+        return
+
     content_hash = _hash_content(text)
 
     existing = metadata_db.get_file(conn, str(path))
     if existing and existing["content_hash"] == content_hash:
-        print(f"[unchanged] {path} - skipping")
         return
 
     if existing:
@@ -65,26 +74,28 @@ async def process_event(event: SourceEvent, conn):
         metadata_db.upsert_file(conn, str(path), content_hash, extractor.source_type, 0)
         return
 
-    rows = []
+    # Prepare texts for batch embedding with metadata prefixes
+    embed_texts = []
     for i, chunk in enumerate(chunks):
-        # Prefix chunk with file metadata so embeddings reflect file type/name.
         embed_text = f"[File: {path.name} | Type: {extractor.source_type}]\n{chunk}"
-
-        # For the first chunk (document header), also prepend likely metadata questions
-        # so the embedding covers queries like "who are the authors" / "what is the title"
-        # even though those words don't appear in the header text itself.
         if i == 0:
             embed_text = (
-                f"What is the title? Who are the authors? What is this document about?\n"
+                f"What is the title? Who are the authors? What is this document or file about?\n"
                 + embed_text
             )
+        embed_texts.append(embed_text)
 
+    # Batch embed all chunks in 1-2 fast requests instead of sequential roundtrips
+    vectors = embed_batch(embed_texts)
+
+    rows = []
+    for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
         rows.append({
             "chunk_id": str(uuid.uuid4()),
             "file_path": str(path),
-            "chunk_text": chunk,        # store clean text for display / generation
+            "chunk_text": chunk,
             "chunk_index": i,
-            "vector": embed(embed_text), # embed with metadata prefix for better retrieval
+            "vector": vector,
             "source_type": extractor.source_type,
         })
 
