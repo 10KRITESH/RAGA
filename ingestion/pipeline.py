@@ -9,11 +9,13 @@ from pathlib import Path
 
 from watchers.events import SourceEvent, EventType
 from extractors.text import TextExtractor
+from extractors.pdf import PDFExtractor
+from extractors.image import ImageOCRExtractor
 from ingestion.chunker import chunk_text
 from ingestion.embedder import embed
 from storage import metadata_db, vector_store
 
-EXTRACTORS = [TextExtractor()]  # more get appended here in Milestone 4
+EXTRACTORS = [TextExtractor(), PDFExtractor(), ImageOCRExtractor()]
 
 
 def _hash_content(text: str) -> str:
@@ -33,15 +35,20 @@ async def process_event(event: SourceEvent, conn):
     if event.event_type == EventType.DELETED:
         vector_store.delete_chunks_for_file(str(path))
         metadata_db.delete_file(conn, str(path))
-        print(f"[deleted]   {path}")
+        print(f"[deleted] {path}")
         return
 
     extractor = _pick_extractor(path)
     if extractor is None:
-        print(f"[skipped]   {path} - unsupported file type")
+        print(f"[skipped] {path} - unsupported file type")
         return
 
-    text = extractor.extract(path)
+    try:
+        text = extractor.extract(path)
+    except Exception as e:
+        print(f"[failed] {path} - extraction error: {e}")
+        return
+
     content_hash = _hash_content(text)
 
     existing = metadata_db.get_file(conn, str(path))
@@ -50,29 +57,28 @@ async def process_event(event: SourceEvent, conn):
         return
 
     if existing:
-        vector_store.delete_chunks_for_file(str(path))  # clear stale chunks first
-        print(f"[updated]   {path} - re-indexing")
-    else:
-        print(f"[new]       {path} - indexing")
+        vector_store.delete_chunks_for_file(str(path))
 
     chunks = chunk_text(text)
+    if not chunks:
+        print(f"[empty] {path} - no content to index")
+        metadata_db.upsert_file(conn, str(path), content_hash, extractor.source_type, 0)
+        return
+
     rows = []
-    loop = asyncio.get_event_loop()
     for i, chunk in enumerate(chunks):
         rows.append({
             "chunk_id": str(uuid.uuid4()),
             "file_path": str(path),
             "chunk_text": chunk,
             "chunk_index": i,
-            "vector": await loop.run_in_executor(None, embed, chunk),
-            "source_type": "text",
+            "vector": embed(chunk),
+            "source_type": extractor.source_type,
         })
 
-    if rows:
-        vector_store.add_chunks(rows)
-        print(f"[indexed]   {path} - {len(chunks)} chunk(s)")
-
-    metadata_db.upsert_file(conn, str(path), content_hash, "text", len(chunks))
+    vector_store.add_chunks(rows)
+    metadata_db.upsert_file(conn, str(path), content_hash, extractor.source_type, len(chunks))
+    print(f"[indexed] {path} - {len(chunks)} chunk(s) [{extractor.source_type}]")
 
 
 async def run_pipeline(queue: asyncio.Queue):

@@ -71,12 +71,12 @@ CLI answers with sources. Everything after this is depth and polish.
 **Goal:** move beyond plain text to the content types that make this
 actually useful day-to-day.
 
-- [ ] Implement `PDFExtractor` (PyMuPDF)
-- [ ] Implement `ImageOCRExtractor` (pytesseract, reusing existing
+- [/] Implement `PDFExtractor` (PyMuPDF)
+- [/] Implement `ImageOCRExtractor` (pytesseract, reusing existing
       activity-logger pipeline logic)
-- [ ] Swap naive chunker → Chonkie for text
-- [ ] Add Tree-sitter based chunking for code files
-- [ ] Manual test: index a PDF and a screenshot, confirm both are queryable
+- [/] Swap naive chunker → Chonkie for text
+- [/] Add Tree-sitter based chunking for code files
+- [/] Manual test: index a PDF and a screenshot, confirm both are queryable
 
 ## Milestone 5 — Retrieval Quality
 **Goal:** answers are actually good, not just present.

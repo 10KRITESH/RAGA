@@ -1,6 +1,6 @@
 # ummm Pdf text extractor straight up
 from pathlib import Path
-import fitz # um PyMuPDF ka import name
+import pymupdf as fitz # um PyMuPDF ka import name
 from extractors.base import Extractor
 
 class PDFExtractor (Extractor):
