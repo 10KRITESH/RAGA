@@ -142,43 +142,87 @@ def _weighted_rrf(
     return [chunks_by_id[cid] for cid in ranked]
 
 
+CONTAINER_SCOPES: dict[str, str] = {
+    "projects": "projects",
+    "project": "projects",
+    "sem vii": "SEM VII",
+    "sem 7": "SEM VII",
+    "semester 7": "SEM VII",
+    "sem vi": "SEM VI",
+    "sem 6": "SEM VI",
+    "semester 6": "SEM VI",
+    "sem v": "SEM V",
+    "sem 5": "SEM V",
+    "semester 5": "SEM V",
+    "capstone": "CAPSTONE",
+    "nptel": "NPTEL",
+    "aws material": "AWS Material",
+    "saa notes": "SAA NOTES",
+}
+
+
+def _detect_scope(query: str) -> str | None:
+    q_lower = query.lower()
+    for phrase, scope in sorted(CONTAINER_SCOPES.items(), key=lambda x: len(x[0]), reverse=True):
+        if phrase in q_lower:
+            return scope
+    return None
+
+
 def retrieve(query: str, top_k: int = 7) -> list[dict]:
     query_vector = embed(query)
     table = vector_store.get_table()
+    ranked_lists = []
 
-    # 1. Semantic vector search (primary signal)
+    scope = _detect_scope(query)
+
+    # 1. Scoped search (if user specifies a domain like 'projects', 'sem vii', etc.)
+    if scope:
+        try:
+            scoped_where = f"file_path ILIKE '%/{scope}/%'"
+            scoped_vec = table.search(query_vector).where(scoped_where).limit(top_k * 4).to_list()
+            if scoped_vec:
+                ranked_lists.append((scoped_vec, 3.5))
+
+            # Strip scope word from query for scoped FTS
+            clean_q = re.sub(rf"\b{re.escape(scope)}\b", "", query, flags=re.IGNORECASE).strip()
+            if clean_q:
+                scoped_fts = table.search(clean_q, query_type="fts").where(scoped_where).limit(top_k * 4).to_list()
+                if scoped_fts:
+                    ranked_lists.append((scoped_fts, 2.5))
+        except Exception:
+            pass
+
+    # 2. Semantic vector search (primary global signal)
     vector_results = (
         table.search(query_vector)
         .limit(top_k * 4)
         .to_list()
     )
+    ranked_lists.append((vector_results, 1.2))
 
-    # 2. BM25 full-text search on chunk content
+    # 3. BM25 full-text search on chunk content
     try:
         fts_results = (
             table.search(query, query_type="fts")
             .limit(top_k * 4)
             .to_list()
         )
+        if fts_results:
+            ranked_lists.append((fts_results, 0.8))
     except Exception:
-        fts_results = []
+        pass
 
-    # 3. Path / Folder keyword matching (case-insensitive ILIKE)
+    # 4. Path / Folder keyword matching (case-insensitive ILIKE)
     path_patterns = _extract_path_patterns(query)
-    path_results = []
     if path_patterns:
         try:
             where_clause = " OR ".join(path_patterns[:15])
             path_results = table.search().where(where_clause).limit(top_k * 5).to_list()
+            if path_results:
+                ranked_lists.append((path_results, 2.5))
         except Exception:
-            path_results = []
-
-    # 4. Merge: vector weight = 1.2, path match = 2.5, FTS = 0.8
-    ranked_lists = [(vector_results, 1.2)]
-    if path_results:
-        ranked_lists.append((path_results, 2.5))
-    if fts_results:
-        ranked_lists.append((fts_results, 0.8))
+            pass
 
     merged = _weighted_rrf(ranked_lists, k=25)
 
@@ -201,5 +245,15 @@ def retrieve(query: str, top_k: int = 7) -> list[dict]:
         if c["chunk_id"] not in seen_ids:
             seen_ids.add(c["chunk_id"])
             deduped.append(c)
+
+    # 5. CrossEncoder Reranking: re-scores candidate pool for high precision
+    try:
+        from core.reranker import rerank
+        candidates_to_rerank = deduped[:25]
+        reranked = rerank(query, candidates_to_rerank, top_k=top_k * 2)
+        if reranked:
+            deduped = reranked
+    except Exception:
+        pass
 
     return _diversify_chunks(deduped, max_per_file=2, top_k=top_k)

@@ -16,6 +16,14 @@ TEXT_EXTENSIONS = {
     ".h", ".hpp", ".java", ".kt", ".lua", ".zig", ".rb", ".php",
 }
 
+# Common extensionless or dot config/build files
+KNOWN_EXACT_FILENAMES = {
+    "dockerfile", "dockerfile-alpine", "containerfile", "makefile", "gnumakefile",
+    "cmakelists.txt", "procfile", "gemfile", "rakefile", "vagrantfile", "brewfile",
+    ".dockerignore", ".gitignore", ".env", ".env.example", ".editorconfig",
+    "caddyfile", "jenkinsfile"
+}
+
 # Max text file size to index (2MB) — skips giant logs / generated minified files
 MAX_TEXT_SIZE_BYTES = 2 * 1024 * 1024
 
@@ -24,6 +32,9 @@ class TextExtractor(Extractor):
     source_type = "text"
 
     def can_handle(self, path: Path) -> bool:
+        name_lower = path.name.lower()
+        if name_lower in KNOWN_EXACT_FILENAMES or name_lower.startswith("dockerfile."):
+            return True
         return path.suffix.lower() in TEXT_EXTENSIONS
 
     def extract(self, path: Path) -> str:
