@@ -7,41 +7,84 @@ import re
 from storage import vector_store
 from ingestion.embedder import embed
 
-# Common course/subject acronym expansions and keywords
+# Common course/subject acronym expansions and keywords.
+# Keys are what the user might say (lowercase); values are folder/filename fragments.
 ACRONYMS = {
+    # SEM VII
+    "computer networks": ["CN", "Computer Networks", "Computer Network"],
+    "cn": ["CN", "Computer Networks"],
     "ethical hacking": ["EH", "Ethical Hacking", "CyberSecurity", "Cyber Security"],
-    "cyber security": ["CS", "CyberSecurity", "Cyber Security", "Security"],
+    "eh": ["EH", "Ethical Hacking"],
+    "data science": ["DS", "Data Science"],
+    "ds": ["DS", "Data Science"],
+    "internet of things": ["IOT", "IoT"],
+    "iot": ["IOT", "IoT"],
+    "operating systems": ["OS", "Operating System"],
+    "os": ["OS", "Operating System"],
+    "software engineering": ["SE", "Software Engineering"],
+    "se": ["SE", "Software Engineering"],
+    # SEM VI
+    "cyber security": ["CS", "CyberSecurity", "Cyber Security"],
+    "cs": ["CS", "CyberSecurity"],
     "machine learning": ["ML", "Machine Learning"],
+    "ml": ["ML", "Machine Learning"],
     "deep learning": ["DL", "Deep Learning"],
-    "artificial intelligence": ["AI"],
+    "dl": ["DL", "Deep Learning"],
     "distributed computing": ["DC"],
+    "dc": ["DC"],
     "biometrics": ["BM"],
+    "bm": ["BM"],
+    "artificial intelligence": ["AI"],
+    "ai": ["AI"],
+    # SEM V / General
+    "database": ["DBMS", "Database"],
+    "dbms": ["DBMS", "Database"],
     "cloud computing": ["AWS", "Cloud"],
+    "aws": ["AWS"],
 }
 
 STOPWORDS = {
     "where", "is", "are", "my", "the", "at", "in", "for", "of", "and", "to",
     "a", "an", "on", "with", "about", "what", "how", "show", "find", "get",
     "give", "tell", "me", "material", "materials", "study", "notes", "files",
-    "file", "folder", "folders", "docs", "document", "documents", "project", "projects"
+    "file", "folder", "folders", "docs", "document", "documents", "project", "projects",
+    "was", "did", "do", "it", "its", "that", "this", "there", "their",
+    "experiment", "lab", "sem", "semester", "assignment", "no",
+    # Roman numerals (semester numbers)
+    "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
 }
 
 
 def _extract_path_patterns(query: str) -> list[str]:
     q_lower = query.lower()
+    # Pre-tokenize query words for whole-word matching against short ACRONYM keys
+    query_words = set(re.findall(r"[a-zA-Z0-9]+", q_lower))
     patterns = []
 
-    # 1. Subject / Course acronym and exact phrase matches (e.g. /EH/, /CS/)
+    # 1. Subject / Course acronym and exact phrase matches (e.g. /EH/, /CS/, /CN/)
+    # Use whole-word check for short keys (≤3 chars) to avoid "se" matching "semester"
     for phrase, aliases in ACRONYMS.items():
-        if phrase in q_lower:
+        phrase_words = phrase.split()
+        if len(phrase_words) == 1 and len(phrase) <= 3:
+            # Short single-word key: require exact token match
+            matched = phrase in query_words
+        else:
+            # Multi-word or longer key: substring match is fine
+            matched = phrase in q_lower
+
+        if matched:
             for alias in aliases:
                 patterns.append(f"file_path LIKE '%/{alias}/%'")
                 patterns.append(f"file_path LIKE '%/{alias}_%'")
                 patterns.append(f"file_path LIKE '%/{alias} %'")
                 patterns.append(f"file_path LIKE '%/{alias}%'")
 
-    # 2. Significant keyword boundaries (e.g. folder name or filename matching word)
-    words = [w for w in re.findall(r"[a-zA-Z0-9_-]+", q_lower) if w not in STOPWORDS and len(w) > 2]
+    # 2. Significant keyword / folder-name matching from query words
+    # Allow 2-char words if they look like alphabetic acronyms (e.g. "cn", "os")
+    words = [
+        w for w in query_words
+        if w not in STOPWORDS and (len(w) > 2 or (len(w) == 2 and w.isalpha()))
+    ]
     for w in words:
         patterns.append(f"file_path LIKE '%/{w}/%'")
         patterns.append(f"file_path LIKE '%/{w.capitalize()}/%'")
