@@ -4,4 +4,5 @@ core
 extractors
 ingestion
 storage
+tui
 watchers

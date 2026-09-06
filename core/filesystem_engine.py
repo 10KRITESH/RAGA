@@ -41,32 +41,44 @@ KNOWN_PATHS: dict[str, Path] = {
     "saa notes":    _HOME / "Documents" / "NMIMS" / "SAA NOTES",
     "nptel":        _HOME / "Documents" / "NMIMS" / "NPTEL",
     # Subject shortcuts
-    "cn":  _HOME / "Documents" / "NMIMS" / "SEM VII" / "CN",
-    "eh":  _HOME / "Documents" / "NMIMS" / "SEM VII" / "EH",
-    "ds":  _HOME / "Documents" / "NMIMS" / "SEM VII" / "DS",
-    "iot": _HOME / "Documents" / "NMIMS" / "SEM VII" / "IOT",
-    "os":  _HOME / "Documents" / "NMIMS" / "SEM VII" / "OS",
-    "ml":  _HOME / "Documents" / "NMIMS" / "SEM VI" / "ML",
-    "cs":  _HOME / "Documents" / "NMIMS" / "SEM VI" / "CS",
-    "dc":  _HOME / "Documents" / "NMIMS" / "SEM VI" / "DC",
-    "bm":  _HOME / "Documents" / "NMIMS" / "SEM VI" / "BM",
-    "ai":  _HOME / "Documents" / "NMIMS" / "SEM V" / "AI",
-    "se":  _HOME / "Documents" / "NMIMS" / "SEM V" / "SE",
+    "sem vii cc":      _HOME / "Documents" / "NMIMS" / "SEM VII" / "CC",
+    "cc sem vii":      _HOME / "Documents" / "NMIMS" / "SEM VII" / "CC",
+    "cloud computing": _HOME / "Documents" / "NMIMS" / "SEM VII" / "CC",
+    "cc":              _HOME / "Documents" / "NMIMS" / "SEM VII" / "CC",
+    "rpa":             _HOME / "Documents" / "NMIMS" / "SEM VII" / "RPA",
+    "cn":              _HOME / "Documents" / "NMIMS" / "SEM VII" / "CN",
+    "eh":              _HOME / "Documents" / "NMIMS" / "SEM VII" / "EH",
+    "ds":              _HOME / "Documents" / "NMIMS" / "SEM VII" / "DS",
+    "iot":             _HOME / "Documents" / "NMIMS" / "SEM VII" / "IOT",
+    "os":              _HOME / "Documents" / "NMIMS" / "SEM VII" / "OS",
+    "ml":              _HOME / "Documents" / "NMIMS" / "SEM VI" / "ML",
+    "cs":              _HOME / "Documents" / "NMIMS" / "SEM VI" / "CS",
+    "dc":              _HOME / "Documents" / "NMIMS" / "SEM VI" / "DC",
+    "bm":              _HOME / "Documents" / "NMIMS" / "SEM VI" / "BM",
+    "ai":              _HOME / "Documents" / "NMIMS" / "SEM V" / "AI",
+    "se":              _HOME / "Documents" / "NMIMS" / "SEM V" / "SE",
 }
 
 
 def _resolve_path(query: str) -> Path | None:
     """Extract and resolve a folder path from a natural-language query."""
     q = query.lower()
+    query_words = set(re.findall(r"[a-z0-9]+", q))
 
-    # 1. Try known aliases (longest match first to avoid "sem" before "sem vii")
+    # 1. Try known aliases (longest match first)
     for alias in sorted(KNOWN_PATHS, key=len, reverse=True):
-        if alias in q:
+        alias_words = alias.split()
+        if len(alias_words) == 1 and len(alias) <= 3:
+            matched = alias in query_words
+        else:
+            matched = alias in q
+
+        if matched:
             p = KNOWN_PATHS[alias]
             if p.exists():
                 return p
 
-    # 2. Try to find a capitalized word that matches a real dir in watched dirs
+    # 2. Try to find a directory match in watched dirs
     words = re.findall(r"[A-Za-z][A-Za-z0-9 _-]*", query)
     for watched in WATCHED_DIRS:
         for word in sorted(words, key=len, reverse=True):

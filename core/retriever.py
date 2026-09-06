@@ -11,6 +11,8 @@ from ingestion.embedder import embed
 # Keys are what the user might say (lowercase); values are folder/filename fragments.
 ACRONYMS = {
     # SEM VII
+    "cloud computing": ["CC", "Cloud Computing"],
+    "cc": ["CC", "Cloud Computing"],
     "computer networks": ["CN", "Computer Networks", "Computer Network"],
     "cn": ["CN", "Computer Networks"],
     "ethical hacking": ["EH", "Ethical Hacking", "CyberSecurity", "Cyber Security"],
@@ -21,6 +23,7 @@ ACRONYMS = {
     "iot": ["IOT", "IoT"],
     "operating systems": ["OS", "Operating System"],
     "os": ["OS", "Operating System"],
+    "rpa": ["RPA"],
     "software engineering": ["SE", "Software Engineering"],
     "se": ["SE", "Software Engineering"],
     # SEM VI
@@ -36,10 +39,11 @@ ACRONYMS = {
     "bm": ["BM"],
     "artificial intelligence": ["AI"],
     "ai": ["AI"],
-    # SEM V / General
+    # Projects / General
+    "capstone": ["CAPSTONE", "Capstone"],
     "database": ["DBMS", "Database"],
     "dbms": ["DBMS", "Database"],
-    "cloud computing": ["AWS", "Cloud"],
+    "cloud": ["AWS", "Cloud"],
     "aws": ["AWS"],
 }
 
@@ -48,8 +52,13 @@ STOPWORDS = {
     "a", "an", "on", "with", "about", "what", "how", "show", "find", "get",
     "give", "tell", "me", "material", "materials", "study", "notes", "files",
     "file", "folder", "folders", "docs", "document", "documents", "project", "projects",
+    "resource", "resources", "resouces", "all", "have", "i",
     "was", "did", "do", "it", "its", "that", "this", "there", "their",
     "experiment", "lab", "sem", "semester", "assignment", "no",
+    # Query & Document metadata noise words
+    "who", "author", "authors", "wrote", "written", "by", "paper", "papers",
+    "presentation", "summary", "overview", "explain", "describe", "detail", "details",
+    "pdf", "docx", "doc", "txt", "code",
     # Roman numerals (semester numbers)
     "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
 }
@@ -57,40 +66,39 @@ STOPWORDS = {
 
 def _extract_path_patterns(query: str) -> list[str]:
     q_lower = query.lower()
-    # Pre-tokenize query words for whole-word matching against short ACRONYM keys
     query_words = set(re.findall(r"[a-zA-Z0-9]+", q_lower))
     patterns = []
 
-    # 1. Subject / Course acronym and exact phrase matches (e.g. /EH/, /CS/, /CN/)
-    # Use whole-word check for short keys (≤3 chars) to avoid "se" matching "semester"
+    # 1. Subject / Course acronym matches (e.g. /EH/, /CS/, /CN/, /CC/)
     for phrase, aliases in ACRONYMS.items():
         phrase_words = phrase.split()
         if len(phrase_words) == 1 and len(phrase) <= 3:
-            # Short single-word key: require exact token match
             matched = phrase in query_words
         else:
-            # Multi-word or longer key: substring match is fine
             matched = phrase in q_lower
 
         if matched:
             for alias in aliases:
-                patterns.append(f"file_path LIKE '%/{alias}/%'")
-                patterns.append(f"file_path LIKE '%/{alias}_%'")
-                patterns.append(f"file_path LIKE '%/{alias} %'")
-                patterns.append(f"file_path LIKE '%/{alias}%'")
+                patterns.append(f"file_path ILIKE '%/{alias}/%'")
+                patterns.append(f"file_path ILIKE '%/{alias}_%'")
+                patterns.append(f"file_path ILIKE '%/{alias} %'")
+                patterns.append(f"file_path ILIKE '%/{alias}-%'")
+                patterns.append(f"file_path ILIKE '%/{alias}%'")
 
-    # 2. Significant keyword / folder-name matching from query words
-    # Allow 2-char words if they look like alphabetic acronyms (e.g. "cn", "os")
+    # 2. Significant keyword / filename matching using case-insensitive ILIKE
     words = [
         w for w in query_words
         if w not in STOPWORDS and (len(w) > 2 or (len(w) == 2 and w.isalpha()))
     ]
     for w in words:
-        patterns.append(f"file_path LIKE '%/{w}/%'")
-        patterns.append(f"file_path LIKE '%/{w.capitalize()}/%'")
-        patterns.append(f"file_path LIKE '%/{w.upper()}/%'")
-        patterns.append(f"file_path LIKE '%/{w}%'")
-        patterns.append(f"file_path LIKE '%/{w.capitalize()}%'")
+        if len(w) <= 3:
+            patterns.append(f"file_path ILIKE '%/{w}/%'")
+            patterns.append(f"file_path ILIKE '%/{w}_%'")
+            patterns.append(f"file_path ILIKE '%/{w} %'")
+            patterns.append(f"file_path ILIKE '%/{w}-%'")
+        else:
+            patterns.append(f"file_path ILIKE '%/{w}/%'")
+            patterns.append(f"file_path ILIKE '%{w}%'")
 
     return patterns
 
@@ -155,7 +163,7 @@ def retrieve(query: str, top_k: int = 7) -> list[dict]:
     except Exception:
         fts_results = []
 
-    # 3. Path / Folder keyword matching (crucial for "where is X / find my X notes")
+    # 3. Path / Folder keyword matching (case-insensitive ILIKE)
     path_patterns = _extract_path_patterns(query)
     path_results = []
     if path_patterns:
@@ -165,7 +173,7 @@ def retrieve(query: str, top_k: int = 7) -> list[dict]:
         except Exception:
             path_results = []
 
-    # 4. Merge: vector weight = 1.2, path match = 2.5 (strong signal for location/topic), FTS = 0.8
+    # 4. Merge: vector weight = 1.2, path match = 2.5, FTS = 0.8
     ranked_lists = [(vector_results, 1.2)]
     if path_results:
         ranked_lists.append((path_results, 2.5))
@@ -173,4 +181,25 @@ def retrieve(query: str, top_k: int = 7) -> list[dict]:
         ranked_lists.append((fts_results, 0.8))
 
     merged = _weighted_rrf(ranked_lists, k=25)
-    return _diversify_chunks(merged, max_per_file=2, top_k=top_k)
+
+    # For top matched files, guarantee Chunk 0 (header/author/title) is available
+    top_file_paths = {c["file_path"] for c in merged[:5]}
+    chunk_0s = []
+    if top_file_paths:
+        try:
+            paths_condition = " OR ".join([f"file_path = '{fp}'" for fp in top_file_paths])
+            header_results = table.search().where(f"chunk_index = 0 AND ({paths_condition})").limit(len(top_file_paths)).to_list()
+            chunk_0s = header_results
+        except Exception:
+            chunk_0s = []
+
+    combined = chunk_0s + merged
+    # Deduplicate preserving order
+    seen_ids = set()
+    deduped = []
+    for c in combined:
+        if c["chunk_id"] not in seen_ids:
+            seen_ids.add(c["chunk_id"])
+            deduped.append(c)
+
+    return _diversify_chunks(deduped, max_per_file=2, top_k=top_k)

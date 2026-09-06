@@ -25,4 +25,4 @@ raga = "cli.main:app"
 py-modules = ["config"]
 
 [tool.setuptools.packages.find]
-include = ["cli*", "core*", "storage*", "watchers*", "ingestion*", "extractors*"]
+include = ["cli*", "core*", "storage*", "watchers*", "ingestion*", "extractors*", "tui*"]

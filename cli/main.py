@@ -3,8 +3,17 @@ import typer
 
 app = typer.Typer(
     name="raga",
-    help="Ask the system anything",
+    help="Ask the system anything — run bare to open the TUI, or use subcommands.",
+    invoke_without_command=True,
 )
+
+
+@app.callback(invoke_without_command=True)
+def default(ctx: typer.Context) -> None:
+    """Launch the TUI when no subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        from tui.app import RagaApp
+        RagaApp().run()
 
 
 @app.command()

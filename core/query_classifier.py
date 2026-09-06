@@ -9,13 +9,15 @@ Keeps query routing logic out of the main engine.
 """
 import re
 
-# Patterns for directory/file listing queries.
-# Must strongly imply the user wants a directory/folder listing, not content.
+# Patterns for directory/file listing and inventory queries.
 _FS_PATTERNS = [
-    # list/show/display ... folders/files/directories/contents
+    # list/show/display ... folders/files/directories/contents/resources
     r"\b(list|show|display|enumerate)\b.{0,50}\b(folder|folders|directory|directories|contents?|items?)\b",
+    # "list all X resources / materials / files that I have"
+    r"\b(list|show|display|what)\b.{0,40}\b(resources?|resouces?|materials?|notes?|slides?|docs?|files?)\b.{0,30}\b(i have|present|available|in|for|of)\b",
+    r"\b(what|which)\b.{0,30}\b(resources?|materials?|notes?|slides?|files?)\b.{0,30}\b(do i have|are there|exist|i have)\b",
     # "list files in X" (but NOT "list experiments" — experiment ≠ filesystem concept)
-    r"\b(list|show)\b.{0,30}\bfiles\b.{0,30}\b(in|inside|under|within)\b",
+    r"\b(list|show)\b.{0,30}\bfiles\b.{0,30}\b(in|inside|under|within|for|of)\b",
     # "what folders are in X", "what directories are in X"
     r"\bwhat\b.{0,15}(folder|directory|directories|folders)\b.{0,30}\b(in|inside|under|within|present|there)\b",
     # "what's in X folder / directory" — must explicitly say folder/directory

@@ -95,6 +95,6 @@ LANCEDB_PATH = DATA_DIR / "lancedb"
 SQLITE_PATH = DATA_DIR / "metadata.sqlite"
 
 EMBEDDING_MODEL = "nomic-embed-text"
-GENERATION_MODEL_DEFAULT = "llama3.2:3b"
+GENERATION_MODEL_DEFAULT = "qwen2.5:3b"
 GENERATION_MODEL_CODE = "qwen2.5-coder:3b"
 OLLAMA_HOST = "http://127.0.0.1:11434"
