@@ -8,7 +8,7 @@ import { Sidebar, type SourceItem } from "./components/sidebar"
 import { MessageCard, type MessageItem } from "./components/message"
 import { SlashMenu, type SlashCommand } from "./components/slash-menu"
 import { ThinkingScanner } from "./components/thinking-scanner"
-import { fetchStatus, fetchModels, executeQuery, type SystemStatus, type OllamaModel } from "./bridge"
+import { fetchStatus, fetchModels, executeQuery, executeQueryStream, type SystemStatus, type OllamaModel } from "./bridge"
 import { copyToClipboard, readFromClipboard } from "./util/clipboard"
 import { sessionEpilogue } from "./util/presentation"
 
@@ -399,33 +399,69 @@ export function App() {
         content: "",
         thoughtTimeMs: 0,
         isThinking: true,
+        isStreaming: true,
         timestamp: timeStr,
       }
     ])
 
     try {
-      const resp = await executeQuery(text, activeModel())
-      const elapsed = Date.now() - startTime
+      let accumulatedText = ""
 
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId
-            ? {
-                ...msg,
-                content: resp.text,
-                thoughtTimeMs: elapsed,
-                isThinking: false,
-              }
-            : msg
-        )
-      )
-
-      if (resp.sources && resp.sources.length > 0) {
-        setSources(resp.sources)
-        setSelectedSourceIndex(0)
-      } else {
-        setSources([])
-      }
+      await executeQueryStream(text, activeModel(), (chunk) => {
+        if (chunk.type === "meta") {
+          if (chunk.sources && chunk.sources.length > 0) {
+            setSources(chunk.sources)
+            setSelectedSourceIndex(0)
+          } else {
+            setSources([])
+          }
+        } else if (chunk.type === "token" && chunk.token) {
+          accumulatedText += chunk.token
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    content: accumulatedText,
+                    isThinking: false,
+                    isStreaming: true,
+                  }
+                : msg
+            )
+          )
+        } else if (chunk.type === "done") {
+          const elapsed = chunk.elapsed ? chunk.elapsed * 1000 : Date.now() - startTime
+          const elapsedSec = (elapsed / 1000).toFixed(1)
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    content: accumulatedText,
+                    thoughtTimeMs: elapsed,
+                    isThinking: false,
+                    isStreaming: false,
+                    stats: `${activeModel()} (GPU) · ${elapsedSec}s`,
+                  }
+                : msg
+            )
+          )
+        } else if (chunk.type === "error") {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    content: accumulatedText ? `${accumulatedText}\n\n${chunk.error}` : chunk.error || "Unknown error",
+                    isThinking: false,
+                    isStreaming: false,
+                    stats: "Error",
+                  }
+                : msg
+            )
+          )
+        }
+      })
     } catch (err: any) {
       setMessages((prev) =>
         prev.map((msg) =>
@@ -434,6 +470,8 @@ export function App() {
                 ...msg,
                 content: `Error running query: ${err.message || String(err)}`,
                 isThinking: false,
+                isStreaming: false,
+                stats: "Error",
               }
             : msg
         )

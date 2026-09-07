@@ -20,34 +20,18 @@ export function MessageCard(props: { message: MessageItem; theme: Theme }) {
   if (isUser()) {
     return (
       <box
-        border={["left"]}
-        borderColor={props.theme.primary}
-        customBorderChars={{
-          topLeft: "",
-          bottomLeft: "",
-          vertical: "┃",
-          topRight: "",
-          bottomRight: "",
-          horizontal: " ",
-          bottomT: "",
-          topT: "",
-          cross: "",
-          leftT: "",
-          rightT: "",
-        }}
+        flexDirection="row"
+        backgroundColor={props.theme.backgroundPanel}
+        paddingLeft={2}
+        paddingRight={2}
+        paddingTop={1}
+        paddingBottom={1}
         marginTop={1}
         marginBottom={1}
+        flexShrink={0}
       >
-        <box
-          paddingTop={1}
-          paddingBottom={1}
-          paddingLeft={2}
-          paddingRight={2}
-          backgroundColor={props.theme.backgroundPanel}
-          flexShrink={0}
-        >
-          <text fg={props.theme.text}>{props.message.content}</text>
-        </box>
+        <text fg={props.theme.primary}><b>│ </b></text>
+        <text fg={props.theme.text}>{props.message.content}</text>
       </box>
     )
   }
@@ -77,7 +61,7 @@ export function MessageCard(props: { message: MessageItem; theme: Theme }) {
       flexShrink={0}
     >
       {/* Thinking Header (Collapsible OpenCode Style with animated spinner) */}
-      <Show when={props.message.thinking}>
+      <Show when={props.message.isStreaming || props.message.thinking}>
         <box flexDirection="row" paddingLeft={3}>
           <Show
             when={props.message.isStreaming}
@@ -100,7 +84,7 @@ export function MessageCard(props: { message: MessageItem; theme: Theme }) {
       </Show>
 
       {/* OpenCode Model / Timing Execution Badge */}
-      <Show when={!props.message.isStreaming}>
+      <Show when={!props.message.isStreaming && props.message.content && props.message.content.length > 0}>
         <box flexDirection="row" paddingLeft={3} marginTop={1}>
           <text fg={props.theme.textMuted}>
             <span style={{ fg: props.theme.primary }}>▣ Build</span> · {props.message.stats || "Qwen 2.5 3B (GPU) · 1.4s"}
@@ -110,3 +94,4 @@ export function MessageCard(props: { message: MessageItem; theme: Theme }) {
     </box>
   )
 }
+

@@ -109,6 +109,95 @@ def handle_query(query: str, model: str | None = None):
         }
 
 
+def handle_query_stream(query: str, model: str | None = None):
+    t0 = time.time()
+    try:
+        qtype = classify_query(query)
+
+        if qtype in ("filesystem", "location"):
+            from core.engine import ask
+            res = ask(query)
+            sources_data = []
+            for i, p in enumerate(res.get("sources", [])[:5], 1):
+                sources_data.append({
+                    "id": i,
+                    "path": p,
+                    "score": 0.95,
+                    "chunkText": f"File referenced: {p}"
+                })
+            print(json.dumps({
+                "type": "meta",
+                "qtype": qtype,
+                "sources": sources_data
+            }), flush=True)
+
+            full_text = res.get("text", "")
+            print(json.dumps({
+                "type": "token",
+                "token": full_text
+            }), flush=True)
+
+            print(json.dumps({
+                "type": "done",
+                "elapsed": round(time.time() - t0, 2)
+            }), flush=True)
+            return
+
+        # Content query
+        chunks = retrieve(query, top_k=7)
+        sources_data = []
+        seen = set()
+        idx = 1
+        for c in chunks:
+            p = c.get("file_path", "")
+            if p and p not in seen:
+                seen.add(p)
+                sources_data.append({
+                    "id": idx,
+                    "path": p,
+                    "score": float(c.get("score", 0.85)),
+                    "chunkText": c.get("chunk_text", "")
+                })
+                idx += 1
+                if idx > 5:
+                    break
+
+        print(json.dumps({
+            "type": "meta",
+            "qtype": qtype,
+            "sources": sources_data
+        }), flush=True)
+
+        if not chunks:
+            print(json.dumps({
+                "type": "token",
+                "token": "I couldn't find anything relevant to that in your indexed files."
+            }), flush=True)
+            print(json.dumps({
+                "type": "done",
+                "elapsed": round(time.time() - t0, 2)
+            }), flush=True)
+            return
+
+        from core.generator import generate_answer_streaming
+        for tok in generate_answer_streaming(query, chunks, model=model):
+            print(json.dumps({
+                "type": "token",
+                "token": tok
+            }), flush=True)
+
+        print(json.dumps({
+            "type": "done",
+            "elapsed": round(time.time() - t0, 2)
+        }), flush=True)
+
+    except Exception as e:
+        print(json.dumps({
+            "type": "error",
+            "error": f"Error running query: {str(e)}"
+        }), flush=True)
+
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) < 2:
@@ -123,15 +212,19 @@ if __name__ == "__main__":
             m = list_models()
             print(json.dumps(m))
         elif cmd == "--query":
-            # python bridge.py --query "prompt" --model "qwen2.5:3b"
+            # python bridge.py --query "prompt" --model "qwen2.5:3b" [--stream]
             query_text = sys.argv[2] if len(sys.argv) > 2 else ""
             model_arg = None
             if "--model" in sys.argv:
                 m_idx = sys.argv.index("--model")
                 if m_idx + 1 < len(sys.argv):
                     model_arg = sys.argv[m_idx + 1]
-            out = handle_query(query_text, model=model_arg)
-            print(json.dumps(out))
+            
+            if "--stream" in sys.argv:
+                handle_query_stream(query_text, model=model_arg)
+            else:
+                out = handle_query(query_text, model=model_arg)
+                print(json.dumps(out))
         else:
             out = handle_query(cmd)
             print(json.dumps(out))
@@ -142,4 +235,5 @@ if __name__ == "__main__":
             "sources": [],
             "elapsed": 0,
         }))
+
 

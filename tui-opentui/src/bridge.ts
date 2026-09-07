@@ -57,10 +57,79 @@ export async function fetchModels(): Promise<OllamaModel[]> {
     return [
       { name: "qwen2.5:3b", size: "1.8 GB", parameters: "3.1B", quantization: "Q4_K_M", is_embedding: false },
       { name: "qwen2.5-coder:7b", size: "4.4 GB", parameters: "7.6B", quantization: "Q4_K_M", is_embedding: false },
-      { name: "llama3.2:3b", size: "1.9 GB", parameters: "3.2B", quantization: "Q4_K_M", is_embedding: false },
     ]
   }
 }
+
+export type StreamChunk = {
+  type: "meta" | "token" | "done" | "error"
+  qtype?: string
+  sources?: SourceItem[]
+  token?: string
+  elapsed?: number
+  error?: string
+}
+
+export async function executeQueryStream(
+  query: string,
+  model: string | undefined,
+  onChunk: (chunk: StreamChunk) => void
+): Promise<void> {
+  try {
+    const args = ["uv", "run", "python", BRIDGE_SCRIPT, "--query", query, "--stream"]
+    if (model) {
+      args.push("--model", model)
+    }
+    const proc = Bun.spawn(args, {
+      cwd: path.resolve(import.meta.dir, "../.."),
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    const reader = proc.stdout.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ""
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() || ""
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        try {
+          const parsed = JSON.parse(trimmed) as StreamChunk
+          onChunk(parsed)
+        } catch {}
+      }
+    }
+
+    if (buffer.trim()) {
+      try {
+        const parsed = JSON.parse(buffer.trim()) as StreamChunk
+        onChunk(parsed)
+      } catch {}
+    }
+
+    const stderrText = await new Response(proc.stderr).text()
+    await proc.exited
+
+    if (proc.exitCode !== 0 && stderrText.trim()) {
+      onChunk({
+        type: "error",
+        error: stderrText.trim()
+      })
+    }
+  } catch (err: any) {
+    onChunk({
+      type: "error",
+      error: `Bridge execution error: ${err?.message || String(err)}`
+    })
+  }
+}
+
 
 export async function executeQuery(query: string, model?: string): Promise<QueryResult> {
   try {
