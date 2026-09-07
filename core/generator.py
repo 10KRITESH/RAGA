@@ -101,15 +101,39 @@ def generate_answer(query: str, chunks: list[dict], history: list[dict] | None =
     selected_model = model or _select_model(query, chunks)
     prompt = _build_prompt(query, chunks, history=history)
 
-    response = _client.generate(
-        model=selected_model,
-        prompt=prompt,
-        options={
-            "num_gpu": 99,    # push all layers to GPU
-            "num_ctx": 4096,  # comfortable context window for all chunks
-        },
-    )
-    return response["response"]
+    try:
+        response = _client.generate(
+            model=selected_model,
+            prompt=prompt,
+            options={
+                "num_ctx": 4096,
+            },
+        )
+        return response["response"]
+    except Exception as e:
+        err_str = str(e).lower()
+        if "out of memory" in err_str or "cudamalloc" in err_str or "cuda" in err_str:
+            try:
+                response = _client.generate(
+                    model=selected_model,
+                    prompt=prompt,
+                    options={
+                        "num_ctx": 2048,
+                    },
+                )
+                return response["response"]
+            except Exception:
+                # Fallback to CPU execution
+                response = _client.generate(
+                    model=selected_model,
+                    prompt=prompt,
+                    options={
+                        "num_gpu": 0,
+                        "num_ctx": 2048,
+                    },
+                )
+                return response["response"]
+        raise e
 
 
 def generate_answer_streaming(query: str, chunks: list[dict], history: list[dict] | None = None, model: str | None = None):
@@ -124,16 +148,34 @@ def generate_answer_streaming(query: str, chunks: list[dict], history: list[dict
     selected_model = model or _select_model(query, chunks)
     prompt = _build_prompt(query, chunks, history=history)
 
-    stream = _client.generate(
-        model=selected_model,
-        prompt=prompt,
-        stream=True,
-        options={
-            "num_gpu": 99,
-            "num_ctx": 4096,
-        },
-    )
-    for chunk in stream:
-        token = chunk.get("response", "")
-        if token:
-            yield token
+    try:
+        stream = _client.generate(
+            model=selected_model,
+            prompt=prompt,
+            stream=True,
+            options={
+                "num_ctx": 4096,
+            },
+        )
+        for chunk in stream:
+            token = chunk.get("response", "")
+            if token:
+                yield token
+    except Exception as e:
+        err_str = str(e).lower()
+        if "out of memory" in err_str or "cudamalloc" in err_str or "cuda" in err_str:
+            stream = _client.generate(
+                model=selected_model,
+                prompt=prompt,
+                stream=True,
+                options={
+                    "num_gpu": 0,
+                    "num_ctx": 2048,
+                },
+            )
+            for chunk in stream:
+                token = chunk.get("response", "")
+                if token:
+                    yield token
+        else:
+            raise e

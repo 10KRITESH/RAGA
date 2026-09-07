@@ -9,7 +9,7 @@ import { MessageCard, type MessageItem } from "./components/message"
 import { SlashMenu, type SlashCommand } from "./components/slash-menu"
 import { ThinkingScanner } from "./components/thinking-scanner"
 import { fetchStatus, fetchModels, executeQuery, type SystemStatus, type OllamaModel } from "./bridge"
-import { copyToClipboard } from "./util/clipboard"
+import { copyToClipboard, readFromClipboard } from "./util/clipboard"
 import { sessionEpilogue } from "./util/presentation"
 
 const DEFAULT_THEME = "opencode"
@@ -19,8 +19,17 @@ export function App() {
   const renderer = useRenderer()
   const themes = allThemes()
 
+  // ── Session Title State ──
+  const [sessionTitle, setSessionTitle] = createSignal("New Session")
+
   // ── Toast / Clipboard State ──
   const [toastMsg, setToastMsg] = createSignal("")
+  let toastTimer: any = null
+  const showToast = (msg: string = "Copied to clipboard") => {
+    setToastMsg(msg)
+    if (toastTimer) clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => setToastMsg(""), 2200)
+  }
 
   const handleCopy = (): boolean => {
     try {
@@ -29,8 +38,7 @@ export function App() {
         const text = sel.getSelectedText?.()
         if (text && text.trim().length > 0) {
           copyToClipboard(text)
-          setToastMsg("Copied to clipboard!")
-          setTimeout(() => setToastMsg(""), 2000)
+          showToast("Copied to clipboard")
           ;(renderer as any).clearSelection?.()
           return true
         }
@@ -61,27 +69,8 @@ export function App() {
   ])
   const [activeModel, setActiveModel] = createSignal("qwen2.5:3b")
 
-  // ── Sources & Preview State ──
-  const [sources, setSources] = createSignal<SourceItem[]>([
-    {
-      id: 1,
-      path: "/home/kriteshgoud/Documents/NMIMS/projects/RAGA/core/retriever.py",
-      score: 0.94,
-      chunkText: "def retrieve(query: str, top_k: int = 7) -> list[dict]:\n    # Hybrid search: vector similarity + BM25 keyword matching + cross-encoder rerank\n    candidate_chunks = vector_store.search(query, k=top_k * 3)\n    return reranker.rerank(query, candidate_chunks)[:top_k]"
-    },
-    {
-      id: 2,
-      path: "/home/kriteshgoud/Documents/NMIMS/projects/RAGA/core/generator.py",
-      score: 0.88,
-      chunkText: "def generate_answer(query: str, chunks: list[dict]) -> str:\n    prompt = build_rag_prompt(query, chunks)\n    return ollama_client.generate(model='qwen2.5:3b', prompt=prompt)"
-    },
-    {
-      id: 3,
-      path: "/home/kriteshgoud/Documents/NMIMS/projects/RAGA/storage/vector_store.py",
-      score: 0.76,
-      chunkText: "class VectorStore:\n    def __init__(self, db_path: str):\n        self.client = chromadb.PersistentClient(path=db_path)\n        self.collection = self.client.get_or_create_collection('raga_docs')"
-    }
-  ])
+  // ── Sources & Preview State (empty by default, populated only when queries match files) ──
+  const [sources, setSources] = createSignal<SourceItem[]>([])
   const [selectedSourceIndex, setSelectedSourceIndex] = createSignal(0)
 
   // ── Command Palette & Mode State ──
@@ -96,9 +85,45 @@ export function App() {
   // ── Chat Transcript Messages ──
   const [messages, setMessages] = createSignal<MessageItem[]>([])
 
-  // ── Input Prompt State ──
+  // ── Input Prompt & History State ──
   const [inputVal, setInputVal] = createSignal("")
+  const [cursorPos, setCursorPos] = createSignal(0)
   const [isProcessing, setIsProcessing] = createSignal(false)
+  const [commandHistory, setCommandHistory] = createSignal<string[]>([])
+  const [historyIndex, setHistoryIndex] = createSignal(-1)
+  const [draftInput, setDraftInput] = createSignal("")
+
+  // Rendered input lines with accurate cursor position (handles multiline and cursor slicing)
+  const renderedInputLines = createMemo(() => {
+    const val = inputVal()
+    const pos = cursorPos()
+    if (!val) return ["█ "]
+
+    const lines = val.split("\n")
+    let charOffset = 0
+    let placed = false
+    const result: string[] = []
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const lineEnd = charOffset + line.length
+      if (!placed && pos >= charOffset && (pos <= lineEnd || i === lines.length - 1)) {
+        const offset = Math.min(Math.max(0, pos - charOffset), line.length)
+        result.push(line.slice(0, offset) + "█" + line.slice(offset))
+        placed = true
+      } else {
+        result.push(line)
+      }
+      charOffset = lineEnd + 1
+    }
+
+    if (!placed) {
+      if (result.length > 0) result[result.length - 1] += "█"
+      else result.push("█")
+    }
+
+    return result
+  })
 
   // Load live status & models & wire up copy-on-select
   onMount(async () => {
@@ -106,8 +131,7 @@ export function App() {
       (renderer as any).console.onCopySelection = async (text: string) => {
         if (!text || text.length === 0) return
         copyToClipboard(text)
-        setToastMsg("Copied to clipboard!")
-        setTimeout(() => setToastMsg(""), 2000)
+        showToast("Copied to clipboard")
         renderer.clearSelection?.()
       }
     }
@@ -123,7 +147,7 @@ export function App() {
     try {
       (renderer as any)?.destroy?.()
     } catch {}
-    process.stdout.write(sessionEpilogue({ title: "Session", sessionID: "ses_" + Date.now().toString(36) }) + "\n")
+    process.stdout.write(sessionEpilogue({ title: sessionTitle(), sessionID: "ses_" + Date.now().toString(36) }) + "\n")
     process.exit(0)
   }
 
@@ -191,6 +215,8 @@ export function App() {
       description: "Clear chat messages & reset",
       action: () => {
         setMessages([])
+        setSources([])
+        setSessionTitle("New Session")
         setInputVal("")
       },
     },
@@ -250,13 +276,22 @@ export function App() {
     )
   })
 
-  // ── Submit Query ──
-  const handleSubmit = async () => {
-    const text = inputVal().trim()
-    if (!text || isProcessing()) return
-    setInputVal("")
+    // ── Submit Query ──
+    const handleSubmit = async () => {
+      const text = inputVal().trim()
+      if (!text || isProcessing()) return
 
-    const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      // Save to history if not duplicate of previous entry
+      setCommandHistory((prev) => {
+        if (prev.length > 0 && prev[prev.length - 1] === text) return prev
+        return [...prev, text]
+      })
+      setHistoryIndex(-1)
+      setDraftInput("")
+      setInputVal("")
+      setCursorPos(0)
+
+      const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 
     // ── Handle Slash Commands Fallback ──
     if (text.startsWith("/")) {
@@ -334,6 +369,11 @@ export function App() {
       return
     }
 
+    // Set dynamic session title on first message
+    if (sessionTitle() === "New Session") {
+      setSessionTitle(text.slice(0, 32))
+    }
+
     // ── 1. Append User Message ──
     const userMsgId = String(Date.now())
     setMessages((prev) => [
@@ -382,6 +422,9 @@ export function App() {
 
       if (resp.sources && resp.sources.length > 0) {
         setSources(resp.sources)
+        setSelectedSourceIndex(0)
+      } else {
+        setSources([])
       }
     } catch (err: any) {
       setMessages((prev) =>
@@ -443,7 +486,11 @@ export function App() {
     { id: "theme-solarized", title: "Theme: Solarized", category: "Theme", action: () => setThemeName("solarized") },
     
     // Actions
-    { id: "action-clear", title: "Clear Messages / Reset", category: "Action", action: () => setMessages([]) },
+    { id: "action-clear", title: "Clear Messages / Reset", category: "Action", action: () => {
+      setMessages([])
+      setSources([])
+      setSessionTitle("New Session")
+    } },
     {
       id: "action-status",
       title: "View Telemetry & Health",
@@ -467,7 +514,7 @@ export function App() {
   ])
 
   // ── Keyboard Navigation & Typing ──
-  useKeyboard((e) => {
+  useKeyboard(async (e) => {
     // Ctrl+P: Toggle Command Palette (All categories)
     if (e.ctrl && (e.name === "p" || e.name === "P")) {
       setPaletteCategory(undefined)
@@ -479,10 +526,37 @@ export function App() {
       return
     }
 
+    // Ctrl+C / Ctrl+Shift+C: Copy selection if any, or copy prompt text, else quit
+    if (e.ctrl && (e.name === "c" || e.name === "C")) {
+      if (handleCopy()) return
+      if (inputVal().length > 0) {
+        copyToClipboard(inputVal())
+        showToast("Copied to clipboard")
+        return
+      }
+      exitApp()
+      return
+    }
+
+    // Ctrl+V / Ctrl+Shift+V: Paste from clipboard
+    if (e.ctrl && (e.name === "v" || e.name === "V")) {
+      const clipText = await readFromClipboard()
+      if (clipText && clipText.length > 0) {
+        const pos = cursorPos()
+        const cur = inputVal()
+        const updated = cur.slice(0, pos) + clipText + cur.slice(pos)
+        setInputVal(updated)
+        setCursorPos(pos + clipText.length)
+        setSlashIndex(0)
+      }
+      return
+    }
+
     // Escape handling
     if (e.name === "escape") {
       if (inputVal().startsWith("/")) {
         setInputVal("")
+        setCursorPos(0)
         return
       }
       if (isProcessing()) {
@@ -496,6 +570,12 @@ export function App() {
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           }
         ])
+        return
+      }
+      if (historyIndex() !== -1) {
+        setHistoryIndex(-1)
+        setInputVal(draftInput())
+        setCursorPos(draftInput().length)
         return
       }
       return
@@ -520,6 +600,68 @@ export function App() {
       }
     }
 
+    // Up Arrow: History backward (previous command)
+    if (e.name === "up" && !inputVal().startsWith("/")) {
+      const history = commandHistory()
+      if (history.length > 0) {
+        if (historyIndex() === -1) {
+          setDraftInput(inputVal())
+          const newIdx = history.length - 1
+          setHistoryIndex(newIdx)
+          setInputVal(history[newIdx])
+          setCursorPos(history[newIdx].length)
+        } else if (historyIndex() > 0) {
+          const newIdx = historyIndex() - 1
+          setHistoryIndex(newIdx)
+          setInputVal(history[newIdx])
+          setCursorPos(history[newIdx].length)
+        }
+      }
+      return
+    }
+
+    // Down Arrow: History forward (next command / draft)
+    if (e.name === "down" && !inputVal().startsWith("/")) {
+      const history = commandHistory()
+      if (historyIndex() !== -1) {
+        if (historyIndex() < history.length - 1) {
+          const newIdx = historyIndex() + 1
+          setHistoryIndex(newIdx)
+          setInputVal(history[newIdx])
+          setCursorPos(history[newIdx].length)
+        } else {
+          setHistoryIndex(-1)
+          setInputVal(draftInput())
+          setCursorPos(draftInput().length)
+        }
+      }
+      return
+    }
+
+    // Left Arrow: Move cursor left
+    if (e.name === "left") {
+      setCursorPos((prev) => Math.max(0, prev - 1))
+      return
+    }
+
+    // Right Arrow: Move cursor right
+    if (e.name === "right") {
+      setCursorPos((prev) => Math.min(inputVal().length, prev + 1))
+      return
+    }
+
+    // Home / Ctrl+A: Move cursor to beginning
+    if (e.name === "home" || (e.ctrl && (e.name === "a" || e.name === "A"))) {
+      setCursorPos(0)
+      return
+    }
+
+    // End / Ctrl+E: Move cursor to end
+    if (e.name === "end" || (e.ctrl && (e.name === "e" || e.name === "E"))) {
+      setCursorPos(inputVal().length)
+      return
+    }
+
     // Tab: Cycle Agent Modes (when not in slash menu)
     if (e.name === "tab") {
       const curIdx = AGENT_MODES.indexOf(agentMode())
@@ -528,20 +670,16 @@ export function App() {
       return
     }
 
-    // Ctrl+C: Copy selection if any, else quit
-    if (e.ctrl && (e.name === "c" || e.name === "C")) {
-      if (handleCopy()) return
-      exitApp()
-    }
-
     // Ctrl+L: Clear Chat
     if (e.ctrl && (e.name === "l" || e.name === "L")) {
       setMessages([])
+      setSources([])
+      setSessionTitle("New Session")
       return
     }
 
     // Quick Preview: 1-5 keys when in session view and input is empty
-    if (!e.ctrl && inputVal() === "" && messages().length > 0 && ["1", "2", "3", "4", "5"].includes(e.name)) {
+    if (!e.ctrl && !e.meta && inputVal() === "" && messages().length > 0 && ["1", "2", "3", "4", "5"].includes(e.name)) {
       const idx = parseInt(e.name) - 1
       if (idx < sources().length) {
         setSelectedSourceIndex(idx)
@@ -549,28 +687,80 @@ export function App() {
       }
     }
 
-    // Enter / Return: Submit
+    // Shift+Enter / Alt+Enter / LineFeed: Insert newline for multiline prompt
+    if (
+      (e.shift && (e.name === "return" || e.name === "enter")) ||
+      e.name === "linefeed" ||
+      ((e.ctrl || e.option) && (e.name === "return" || e.name === "enter"))
+    ) {
+      const pos = cursorPos()
+      const cur = inputVal()
+      const updated = cur.slice(0, pos) + "\n" + cur.slice(pos)
+      setInputVal(updated)
+      setCursorPos(pos + 1)
+      setSlashIndex(0)
+      return
+    }
+
+    // Standard Enter: Submit
     if (e.name === "return" || e.name === "enter") {
       handleSubmit()
       return
     }
 
-    // Backspace: Delete character
+    // Delete key (delete character ahead of cursor)
+    if (e.name === "delete") {
+      const pos = cursorPos()
+      const cur = inputVal()
+      if (pos < cur.length) {
+        const updated = cur.slice(0, pos) + cur.slice(pos + 1)
+        setInputVal(updated)
+      }
+      return
+    }
+
+    // Backspace: Delete character behind cursor
     if (e.name === "backspace") {
-      setInputVal((prev) => prev.slice(0, -1))
-      setSlashIndex(0)
+      const pos = cursorPos()
+      const cur = inputVal()
+      if (pos > 0) {
+        const updated = cur.slice(0, pos - 1) + cur.slice(pos)
+        setInputVal(updated)
+        setCursorPos(pos - 1)
+        setSlashIndex(0)
+      }
       return
     }
 
     // Space key
     if (e.name === "space") {
-      setInputVal((prev) => prev + " ")
+      const pos = cursorPos()
+      const cur = inputVal()
+      const updated = cur.slice(0, pos) + " " + cur.slice(pos)
+      setInputVal(updated)
+      setCursorPos(pos + 1)
+      setSlashIndex(0)
       return
     }
 
-    // Standard characters
-    if (e.raw && e.raw.length === 1 && !e.ctrl) {
-      setInputVal((prev) => prev + e.raw)
+    // Terminal paste / multi-character input
+    if (e.raw && e.raw.length > 1 && !e.ctrl && !e.meta) {
+      const pos = cursorPos()
+      const cur = inputVal()
+      const updated = cur.slice(0, pos) + e.raw + cur.slice(pos)
+      setInputVal(updated)
+      setCursorPos(pos + e.raw.length)
+      setSlashIndex(0)
+      return
+    }
+
+    // Standard single character
+    if (e.raw && e.raw.length === 1 && !e.ctrl && !e.meta) {
+      const pos = cursorPos()
+      const cur = inputVal()
+      const updated = cur.slice(0, pos) + e.raw + cur.slice(pos)
+      setInputVal(updated)
+      setCursorPos(pos + 1)
       setSlashIndex(0)
     }
   })
@@ -587,6 +777,24 @@ export function App() {
         handleCopy()
       }}
     >
+      {/* ── Copied to Clipboard Toast Notification ── */}
+      <Show when={toastMsg()}>
+        <box
+          position="absolute"
+          top={1}
+          right={2}
+          borderStyle="single"
+          borderColor={theme().borderActive || theme().primary}
+          backgroundColor={theme().backgroundPanel || theme().background}
+          paddingLeft={2}
+          paddingRight={2}
+          paddingTop={0}
+          paddingBottom={0}
+        >
+          <text fg={theme().text}>{toastMsg()}</text>
+        </box>
+      </Show>
+
       {/* ── Command Palette Modal ── */}
       <Show when={showPalette()}>
         <CommandPalette
@@ -652,7 +860,11 @@ export function App() {
                       </box>
                     }
                   >
-                    <text fg={theme().text}>{inputVal()}█</text>
+                    <box flexDirection="column">
+                      <For each={renderedInputLines()}>
+                        {(line) => <text fg={theme().text}>{line}</text>}
+                      </For>
+                    </box>
                   </Show>
                 </box>
 
@@ -744,7 +956,11 @@ export function App() {
                       </box>
                     }
                   >
-                    <text fg={theme().text}>{inputVal()}█</text>
+                    <box flexDirection="column">
+                      <For each={renderedInputLines()}>
+                        {(line) => <text fg={theme().text}>{line}</text>}
+                      </For>
+                    </box>
                   </Show>
                 </box>
 
@@ -784,6 +1000,9 @@ export function App() {
           {/* Right Column: Custom Sources & Chunk Preview Sidebar */}
           <Sidebar
             theme={theme()}
+            title={sessionTitle()}
+            modelName={activeModel()}
+            agentMode={agentMode()}
             sources={sources()}
             selectedIndex={selectedSourceIndex()}
             fileCount={status().files_indexed}

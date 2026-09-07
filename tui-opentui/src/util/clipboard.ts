@@ -35,3 +35,29 @@ export function copyToClipboard(text: string): boolean {
 
   return copied
 }
+
+export async function readFromClipboard(): Promise<string> {
+  // 1. Wayland wl-paste
+  try {
+    const proc = Bun.spawn(["wl-paste", "--no-newline"], { stdout: "pipe", stderr: "ignore" })
+    const text = await new Response(proc.stdout).text()
+    if (text && text.length > 0) return text
+  } catch {}
+
+  // 2. X11 xclip
+  try {
+    const proc = Bun.spawn(["xclip", "-selection", "clipboard", "-o"], { stdout: "pipe", stderr: "ignore" })
+    const text = await new Response(proc.stdout).text()
+    if (text && text.length > 0) return text
+  } catch {}
+
+  // 3. xsel
+  try {
+    const proc = Bun.spawn(["xsel", "--clipboard", "--output"], { stdout: "pipe", stderr: "ignore" })
+    const text = await new Response(proc.stdout).text()
+    if (text && text.length > 0) return text
+  } catch {}
+
+  return ""
+}
+

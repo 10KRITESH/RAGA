@@ -52,77 +52,94 @@ def list_models():
 
 def handle_query(query: str, model: str | None = None):
     t0 = time.time()
-    qtype = classify_query(query)
+    try:
+        qtype = classify_query(query)
 
-    if qtype in ("filesystem", "location"):
-        from core.engine import ask
-        res = ask(query)
+        if qtype in ("filesystem", "location"):
+            from core.engine import ask
+            res = ask(query)
+            sources_data = []
+            for i, p in enumerate(res.get("sources", [])[:5], 1):
+                sources_data.append({
+                    "id": i,
+                    "path": p,
+                    "score": 0.95,
+                    "chunkText": f"File referenced: {p}"
+                })
+            return {
+                "qtype": qtype,
+                "text": res.get("text", ""),
+                "sources": sources_data,
+                "elapsed": round(time.time() - t0, 2),
+            }
+
+        # Content query
+        chunks = retrieve(query, top_k=7)
+        answer = generate_answer(query, chunks, model=model) if chunks else "No relevant information found in indexed files."
+
         sources_data = []
-        for i, p in enumerate(res.get("sources", [])[:5], 1):
-            sources_data.append({
-                "id": i,
-                "path": p,
-                "score": 0.95,
-                "chunkText": f"File referenced: {p}"
-            })
+        seen = set()
+        idx = 1
+        for c in chunks:
+            p = c.get("file_path", "")
+            if p and p not in seen:
+                seen.add(p)
+                sources_data.append({
+                    "id": idx,
+                    "path": p,
+                    "score": float(c.get("score", 0.85)),
+                    "chunkText": c.get("chunk_text", "")
+                })
+                idx += 1
+                if idx > 5:
+                    break
+
         return {
             "qtype": qtype,
-            "text": res.get("text", ""),
+            "text": answer,
             "sources": sources_data,
             "elapsed": round(time.time() - t0, 2),
         }
-
-    # Content query
-    chunks = retrieve(query, top_k=7)
-    answer = generate_answer(query, chunks, model=model) if chunks else "No relevant information found in indexed files."
-
-    sources_data = []
-    seen = set()
-    idx = 1
-    for c in chunks:
-        p = c.get("file_path", "")
-        if p and p not in seen:
-            seen.add(p)
-            sources_data.append({
-                "id": idx,
-                "path": p,
-                "score": float(c.get("score", 0.85)),
-                "chunkText": c.get("chunk_text", "")
-            })
-            idx += 1
-            if idx > 5:
-                break
-
-    return {
-        "qtype": qtype,
-        "text": answer,
-        "sources": sources_data,
-        "elapsed": round(time.time() - t0, 2),
-    }
+    except Exception as e:
+        return {
+            "qtype": "content",
+            "text": f"Error running query: {str(e)}",
+            "sources": [],
+            "elapsed": round(time.time() - t0, 2),
+        }
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "No query provided"}))
-        sys.exit(1)
+    try:
+        if len(sys.argv) < 2:
+            print(json.dumps({"error": "No query provided"}))
+            sys.exit(1)
 
-    cmd = sys.argv[1]
-    if cmd == "--status":
-        s = get_status()
-        print(json.dumps(s))
-    elif cmd == "--models":
-        m = list_models()
-        print(json.dumps(m))
-    elif cmd == "--query":
-        # python bridge.py --query "prompt" --model "qwen2.5:3b"
-        query_text = sys.argv[2] if len(sys.argv) > 2 else ""
-        model_arg = None
-        if "--model" in sys.argv:
-            m_idx = sys.argv.index("--model")
-            if m_idx + 1 < len(sys.argv):
-                model_arg = sys.argv[m_idx + 1]
-        out = handle_query(query_text, model=model_arg)
-        print(json.dumps(out))
-    else:
-        out = handle_query(cmd)
-        print(json.dumps(out))
+        cmd = sys.argv[1]
+        if cmd == "--status":
+            s = get_status()
+            print(json.dumps(s))
+        elif cmd == "--models":
+            m = list_models()
+            print(json.dumps(m))
+        elif cmd == "--query":
+            # python bridge.py --query "prompt" --model "qwen2.5:3b"
+            query_text = sys.argv[2] if len(sys.argv) > 2 else ""
+            model_arg = None
+            if "--model" in sys.argv:
+                m_idx = sys.argv.index("--model")
+                if m_idx + 1 < len(sys.argv):
+                    model_arg = sys.argv[m_idx + 1]
+            out = handle_query(query_text, model=model_arg)
+            print(json.dumps(out))
+        else:
+            out = handle_query(cmd)
+            print(json.dumps(out))
+    except Exception as e:
+        print(json.dumps({
+            "qtype": "content",
+            "text": f"Error executing query: {str(e)}",
+            "sources": [],
+            "elapsed": 0,
+        }))
+

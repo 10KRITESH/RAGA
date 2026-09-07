@@ -55,12 +55,16 @@ function renderMeter(score: number): { bar: string; pct: number } {
 
 export function Sidebar(props: {
   theme: Theme
+  title: string
+  modelName: string
+  agentMode: string
   sources: SourceItem[]
   selectedIndex: number
   fileCount: number
   onSelect: (index: number) => void
 }) {
   const selectedSource = createMemo(() => {
+    if (!props.sources || props.sources.length === 0) return null
     return props.sources[props.selectedIndex] || props.sources[0] || null
   })
 
@@ -77,43 +81,51 @@ export function Sidebar(props: {
     >
       {/* ── Section 1: Session / Title ── */}
       <box flexDirection="column" flexShrink={0} marginBottom={1}>
-        <text fg={props.theme.text}><b>Greeting</b></text>
+        <text fg={props.theme.text}><b>{props.title || "Session"}</b></text>
       </box>
 
       {/* ── Section 2: Context / System Telemetry ── */}
       <box flexDirection="column" flexShrink={0} marginBottom={1} gap={0}>
         <text fg={props.theme.text}><b>Context</b></text>
         <text fg={props.theme.textMuted}>{props.fileCount.toLocaleString()} files indexed</text>
-        <text fg={props.theme.textMuted}>Qwen 2.5 3B (GPU)</text>
-        <text fg={props.theme.textMuted}>Hybrid RAG + ReRank</text>
+        <text fg={props.theme.textMuted}>{props.modelName} (GPU)</text>
+        <text fg={props.theme.textMuted}>Agent: {props.agentMode}</text>
       </box>
 
-      {/* ── Section 3: Sources ── */}
-      <box flexDirection="column" flexShrink={0}>
-        <text fg={props.theme.text}>
-          <b>Sources ({props.sources.length})</b>
-        </text>
-      </box>
-
-      <scrollbox
-        height={8}
-        flexShrink={0}
-        paddingRight={1}
-        verticalScrollbarOptions={{
-          trackOptions: {
-            backgroundColor: props.theme.background,
-            foregroundColor: props.theme.borderActive,
-          },
-        }}
+      {/* ── Dynamic Sources & Preview (Only when retrieved sources exist) ── */}
+      <Show
+        when={props.sources && props.sources.length > 0}
+        fallback={
+          <box flexDirection="column" flexGrow={1} gap={1}>
+            <box flexDirection="column" flexShrink={0}>
+              <text fg={props.theme.text}><b>LSP / Knowledge</b></text>
+              <text fg={props.theme.textMuted}>Vector DB Active</text>
+              <text fg={props.theme.textMuted}>Semantic Reranker ready</text>
+            </box>
+          </box>
+        }
       >
-        <Show
-          when={props.sources.length > 0}
-          fallback={<text fg={props.theme.textMuted}>No sources referenced</text>}
+        {/* ── Section 3: Sources ── */}
+        <box flexDirection="column" flexShrink={0}>
+          <text fg={props.theme.text}>
+            <b>Sources ({props.sources.length})</b>
+          </text>
+        </box>
+
+        <scrollbox
+          height={8}
+          flexShrink={0}
+          paddingRight={1}
+          verticalScrollbarOptions={{
+            trackOptions: {
+              backgroundColor: props.theme.background,
+              foregroundColor: props.theme.borderActive,
+            },
+          }}
         >
           <box flexDirection="column" gap={1}>
             <For each={props.sources}>
               {(src, idx) => {
-                const badge = getFileTypeBadge(src.path)
                 const name = getFileName(src.path)
                 const meter = renderMeter(src.score)
                 const isSelected = createMemo(() => props.selectedIndex === idx())
@@ -143,45 +155,45 @@ export function Sidebar(props: {
               }}
             </For>
           </box>
-        </Show>
-      </scrollbox>
+        </scrollbox>
 
-      {/* ── Section 4: Chunk Preview ── */}
-      <box flexDirection="column" flexShrink={0} marginTop={1}>
-        <text fg={props.theme.text}><b>Preview</b></text>
-      </box>
+        {/* ── Section 4: Chunk Preview ── */}
+        <box flexDirection="column" flexShrink={0} marginTop={1}>
+          <text fg={props.theme.text}><b>Preview</b></text>
+        </box>
 
-      <scrollbox
-        flexGrow={1}
-        paddingRight={1}
-        verticalScrollbarOptions={{
-          trackOptions: {
-            backgroundColor: props.theme.background,
-            foregroundColor: props.theme.borderActive,
-          },
-        }}
-      >
-        <Show
-          when={selectedSource()}
-          fallback={
-            <text fg={props.theme.textMuted}>
-              Select 1-{props.sources.length || 5} to inspect chunk
-            </text>
-          }
-        >
-          {(src) => {
-            const name = getFileName(src().path)
-            const folder = getRelativeFolder(src().path)
-            return (
-              <box flexDirection="column" gap={0}>
-                <text fg={props.theme.primary}>{name}</text>
-                <text fg={props.theme.textMuted}>{folder ? folder + "/" : ""}</text>
-                <text fg={props.theme.textMuted}>{src().chunkText}</text>
-              </box>
-            )
+        <scrollbox
+          flexGrow={1}
+          paddingRight={1}
+          verticalScrollbarOptions={{
+            trackOptions: {
+              backgroundColor: props.theme.background,
+              foregroundColor: props.theme.borderActive,
+            },
           }}
-        </Show>
-      </scrollbox>
+        >
+          <Show
+            when={selectedSource()}
+            fallback={
+              <text fg={props.theme.textMuted}>
+                Select 1-{props.sources.length} to inspect chunk
+              </text>
+            }
+          >
+            {(src) => {
+              const name = getFileName(src().path)
+              const folder = getRelativeFolder(src().path)
+              return (
+                <box flexDirection="column" gap={0}>
+                  <text fg={props.theme.primary}>{name}</text>
+                  <text fg={props.theme.textMuted}>{folder ? folder + "/" : ""}</text>
+                  <text fg={props.theme.textMuted}>{src().chunkText}</text>
+                </box>
+              )
+            }}
+          </Show>
+        </scrollbox>
+      </Show>
 
       {/* ── Footer ── */}
       <box flexShrink={0} paddingTop={1} flexDirection="column">

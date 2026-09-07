@@ -23,7 +23,7 @@ def _get_model() -> CrossEncoder:
     global _model
     if _model is None:
         torch.set_grad_enabled(False)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cpu"
         try:
             # Try fast local-only load first
             _model = CrossEncoder(

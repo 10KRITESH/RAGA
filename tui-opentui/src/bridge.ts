@@ -73,14 +73,30 @@ export async function executeQuery(query: string, model?: string): Promise<Query
       stdout: "pipe",
       stderr: "pipe",
     })
-    const output = await new Response(proc.stdout).text()
-    return JSON.parse(output.trim())
-  } catch (err) {
+    const [stdoutText, stderrText] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+    await proc.exited
+
+    const trimmed = stdoutText.trim()
+    if (!trimmed) {
+      const errDetail = stderrText.trim()
+      return {
+        qtype: "content",
+        text: errDetail ? `Backend error:\n${errDetail}` : "No response received from Python backend.",
+        sources: [],
+        elapsed: 0,
+      }
+    }
+    return JSON.parse(trimmed)
+  } catch (err: any) {
     return {
       qtype: "content",
-      text: `Error executing query via bridge: ${err}`,
+      text: `Error executing query via bridge: ${err?.message || String(err)}`,
       sources: [],
       elapsed: 0,
     }
   }
 }
+
