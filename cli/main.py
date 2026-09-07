@@ -8,12 +8,35 @@ app = typer.Typer(
 )
 
 
+import os
+import shutil
+import subprocess
+
+def launch_tui(legacy: bool = False):
+    """Launch OpenTUI (OpenCode style) by default, or Textual if requested/fallback."""
+    if not legacy:
+        raga_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        opentui_dir = os.path.join(raga_root, "tui-opentui")
+        bun_path = shutil.which("bun")
+        if bun_path and os.path.exists(opentui_dir):
+            try:
+                subprocess.run([bun_path, "run", "src/index.tsx"], cwd=opentui_dir)
+                return
+            except KeyboardInterrupt:
+                return
+
+    from tui.app import RagaApp
+    RagaApp().run()
+
+
 @app.callback(invoke_without_command=True)
-def default(ctx: typer.Context) -> None:
+def default(
+    ctx: typer.Context,
+    textual: bool = typer.Option(False, "--textual", "--legacy", help="Launch legacy Textual Python TUI"),
+) -> None:
     """Launch the TUI when no subcommand is given."""
     if ctx.invoked_subcommand is None:
-        from tui.app import RagaApp
-        RagaApp().run()
+        launch_tui(legacy=textual)
 
 
 @app.command()
@@ -59,9 +82,11 @@ def reindex(path: str):
 
 
 @app.command()
-def chat():
-    """Launch TUI"""
-    typer.echo("not implemented yet")
+def chat(
+    textual: bool = typer.Option(False, "--textual", "--legacy", help="Launch legacy Textual Python TUI"),
+):
+    """Launch the interactive TUI."""
+    launch_tui(legacy=textual)
 
 
 if __name__ == "__main__":

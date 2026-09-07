@@ -94,15 +94,15 @@ Question: {query}
 Answer:"""
 
 
-def generate_answer(query: str, chunks: list[dict], history: list[dict] | None = None) -> str:
+def generate_answer(query: str, chunks: list[dict], history: list[dict] | None = None, model: str | None = None) -> str:
     if not chunks:
         return "I couldn't find anything relevant to that in your indexed files."
 
-    model = _select_model(query, chunks)
+    selected_model = model or _select_model(query, chunks)
     prompt = _build_prompt(query, chunks, history=history)
 
     response = _client.generate(
-        model=model,
+        model=selected_model,
         prompt=prompt,
         options={
             "num_gpu": 99,    # push all layers to GPU
@@ -112,7 +112,7 @@ def generate_answer(query: str, chunks: list[dict], history: list[dict] | None =
     return response["response"]
 
 
-def generate_answer_streaming(query: str, chunks: list[dict], history: list[dict] | None = None):
+def generate_answer_streaming(query: str, chunks: list[dict], history: list[dict] | None = None, model: str | None = None):
     """
     Streaming version — yields response tokens as they arrive from Ollama.
     Used by the TUI to render the answer live, token by token.
@@ -121,11 +121,11 @@ def generate_answer_streaming(query: str, chunks: list[dict], history: list[dict
         yield "I couldn't find anything relevant to that in your indexed files."
         return
 
-    model = _select_model(query, chunks)
+    selected_model = model or _select_model(query, chunks)
     prompt = _build_prompt(query, chunks, history=history)
 
     stream = _client.generate(
-        model=model,
+        model=selected_model,
         prompt=prompt,
         stream=True,
         options={

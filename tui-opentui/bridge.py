@@ -8,7 +8,7 @@ import json
 import time
 
 # Add RAGA root directory to sys.path
-raga_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+raga_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if raga_root not in sys.path:
     sys.path.insert(0, raga_root)
 
@@ -16,9 +16,41 @@ from core.query_classifier import classify_query
 from core.retriever import retrieve
 from core.generator import generate_answer
 from core.status_engine import get_status
+import ollama
+from config import OLLAMA_HOST
 
 
-def handle_query(query: str):
+def list_models():
+    try:
+        client = ollama.Client(host=OLLAMA_HOST)
+        resp = client.list()
+        models_list = []
+        raw_models = getattr(resp, "models", []) if hasattr(resp, "models") else resp.get("models", [])
+        for m in raw_models:
+            name = getattr(m, "model", "") if hasattr(m, "model") else m.get("model", "")
+            size = getattr(m, "size", 0) if hasattr(m, "size") else m.get("size", 0)
+            details = getattr(m, "details", None) if hasattr(m, "details") else m.get("details", {})
+            param_size = getattr(details, "parameter_size", "") if hasattr(details, "parameter_size") else details.get("parameter_size", "")
+            quant = getattr(details, "quantization_level", "") if hasattr(details, "quantization_level") else details.get("quantization_level", "")
+            
+            size_str = f"{size / (1024**3):.1f} GB" if size >= 1024**3 else f"{size / (1024**2):.0f} MB"
+            models_list.append({
+                "name": name,
+                "size": size_str,
+                "parameters": param_size,
+                "quantization": quant,
+                "is_embedding": "embed" in name.lower(),
+            })
+        return models_list
+    except Exception as e:
+        return [
+            {"name": "qwen2.5:3b", "size": "1.9 GB", "parameters": "3.1B", "quantization": "Q4_K_M", "is_embedding": False},
+            {"name": "qwen2.5-coder:7b", "size": "4.7 GB", "parameters": "7.6B", "quantization": "Q4_K_M", "is_embedding": False},
+            {"name": "llama3.2:3b", "size": "2.0 GB", "parameters": "3.2B", "quantization": "Q4_K_M", "is_embedding": False},
+        ]
+
+
+def handle_query(query: str, model: str | None = None):
     t0 = time.time()
     qtype = classify_query(query)
 
@@ -42,7 +74,7 @@ def handle_query(query: str):
 
     # Content query
     chunks = retrieve(query, top_k=7)
-    answer = generate_answer(query, chunks) if chunks else "No relevant information found in indexed files."
+    answer = generate_answer(query, chunks, model=model) if chunks else "No relevant information found in indexed files."
 
     sources_data = []
     seen = set()
@@ -78,6 +110,19 @@ if __name__ == "__main__":
     if cmd == "--status":
         s = get_status()
         print(json.dumps(s))
+    elif cmd == "--models":
+        m = list_models()
+        print(json.dumps(m))
+    elif cmd == "--query":
+        # python bridge.py --query "prompt" --model "qwen2.5:3b"
+        query_text = sys.argv[2] if len(sys.argv) > 2 else ""
+        model_arg = None
+        if "--model" in sys.argv:
+            m_idx = sys.argv.index("--model")
+            if m_idx + 1 < len(sys.argv):
+                model_arg = sys.argv[m_idx + 1]
+        out = handle_query(query_text, model=model_arg)
+        print(json.dumps(out))
     else:
         out = handle_query(cmd)
         print(json.dumps(out))

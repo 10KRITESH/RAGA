@@ -30,7 +30,6 @@ export function Prompt(props: {
       {/* ── Elevated Prompt Box ── */}
       <box
         backgroundColor={props.theme.backgroundPanel}
-        borderLeftColor={props.theme.primary}
         paddingLeft={2}
         paddingRight={2}
         paddingTop={1}

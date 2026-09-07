@@ -11,7 +11,6 @@ export function Header(props: { theme: Theme; fileCount: number; modelName: stri
       justifyContent="space-between"
       paddingLeft={2}
       paddingRight={2}
-      borderBottomColor={props.theme.border}
     >
       <box flexDirection="row" gap={2} alignItems="center">
         <text fg={props.theme.primary}>

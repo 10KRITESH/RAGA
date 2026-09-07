@@ -15,6 +15,14 @@ export type SystemStatus = {
   last_indexed_at: string | null
 }
 
+export type OllamaModel = {
+  name: string
+  size: string
+  parameters: string
+  quantization: string
+  is_embedding: boolean
+}
+
 const BRIDGE_SCRIPT = path.resolve(import.meta.dir, "../bridge.py")
 
 export async function fetchStatus(): Promise<SystemStatus> {
@@ -36,9 +44,31 @@ export async function fetchStatus(): Promise<SystemStatus> {
   }
 }
 
-export async function executeQuery(query: string): Promise<QueryResult> {
+export async function fetchModels(): Promise<OllamaModel[]> {
   try {
-    const proc = Bun.spawn(["uv", "run", "python", BRIDGE_SCRIPT, query], {
+    const proc = Bun.spawn(["uv", "run", "python", BRIDGE_SCRIPT, "--models"], {
+      cwd: path.resolve(import.meta.dir, "../.."),
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const output = await new Response(proc.stdout).text()
+    return JSON.parse(output.trim())
+  } catch {
+    return [
+      { name: "qwen2.5:3b", size: "1.8 GB", parameters: "3.1B", quantization: "Q4_K_M", is_embedding: false },
+      { name: "qwen2.5-coder:7b", size: "4.4 GB", parameters: "7.6B", quantization: "Q4_K_M", is_embedding: false },
+      { name: "llama3.2:3b", size: "1.9 GB", parameters: "3.2B", quantization: "Q4_K_M", is_embedding: false },
+    ]
+  }
+}
+
+export async function executeQuery(query: string, model?: string): Promise<QueryResult> {
+  try {
+    const args = ["uv", "run", "python", BRIDGE_SCRIPT, "--query", query]
+    if (model) {
+      args.push("--model", model)
+    }
+    const proc = Bun.spawn(args, {
       cwd: path.resolve(import.meta.dir, "../.."),
       stdout: "pipe",
       stderr: "pipe",
